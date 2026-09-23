@@ -8,7 +8,10 @@
 <meta name="theme-color" content="#fff8ee">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/maskable-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Tomatito">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&display=swap" rel="stylesheet">
@@ -125,11 +128,6 @@ svg.i { width: 1em; height: 1em; fill: currentColor; flex: none; }
 .bottom { display: flex; justify-content: space-between; gap: 16px; font-size: 12.5px; font-weight: 600; color: rgba(69, 36, 33, .45); }
 kbd { font: inherit; font-weight: 800; padding: 1px 7px; border-radius: 6px; background: rgba(255, 255, 255, .8); box-shadow: 0 1px 0 rgba(69, 36, 33, .15); color: rgba(69, 36, 33, .7); }
 
-@media (max-width: 560px) {
-  .tool > span, .keys { display: none; }
-  .tool { padding: 10px; }
-  .bottom { justify-content: center; }
-}
 
 /* ---------- side drawers: harvest and settings ---------- */
 #scrim { position: fixed; inset: 0; z-index: 5; background: rgba(69, 36, 33, .2); opacity: 0; pointer-events: none; transition: opacity .25s; }
@@ -179,6 +177,60 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
 .check small { display: block; font-size: 12px; font-weight: 600; color: rgba(69, 36, 33, .45); }
 .drawer .card.checks { padding: 8px 6px; }
 .explain { margin: 0; font-size: 12.5px; font-weight: 600; line-height: 1.45; color: rgba(69, 36, 33, .5); }
+
+/* ---------- phone: the same layout as the iPhone app ---------- */
+.phone-only { display: none !important; }
+@media (max-width: 600px) {
+  .desk-only, .bottom, #focusControls, #pendingControls, #cycleText { display: none !important; }
+  .phone-only { display: revert !important; }
+  .phone-only[hidden] { display: none !important; }
+  body.resting { background: linear-gradient(135deg, var(--mint), var(--peach)) fixed; }
+
+  #shell { height: 100dvh; min-height: 0; padding: calc(8px + env(safe-area-inset-top)) 24px calc(8px + env(safe-area-inset-bottom)); }
+  .brand { color: var(--ink); }
+  .tool { height: 36px; padding: 0 12px; font-size: 14px; font-weight: 600; }
+  #openSettings { width: 36px; padding: 0; justify-content: center; }
+  .hv.phone-only { display: inline-flex !important; align-items: center; gap: 5px; }
+
+  .room { padding: 6px 0; overflow: hidden; }
+  .room > * { order: 9; }
+  #longChip { order: 0; margin-bottom: 10px; }
+  #tomato { order: 1; }
+  #time { order: 2; }
+  .cycle { order: 3; }
+  #setup { order: 4; }
+  #line { order: 5; }
+  #ideaInline { order: 6; }
+  #tomato svg { width: min(25vh, 210px) !important; }
+  #time { margin-top: 10px; font-size: 72px; }
+  body.resting #time, body.resting #line { color: var(--forest); }
+  .cycle { margin-top: 10px; }
+  .dots { gap: 7px; }
+  #setup { margin-top: 6px; padding: 4px 10px; border-radius: 999px; font-size: 14px; font-weight: 700; color: rgba(69, 36, 33, .5); }
+  #line { min-height: 44px; margin-top: 10px; font-size: 17px; font-weight: 600; }
+
+  #ideaInline {
+    width: 100%; margin-top: 10px; padding: 14px; border-radius: 20px; background: rgba(255, 255, 255, .55);
+    display: flex !important; align-items: center; gap: 14px; text-align: left; color: var(--forest);
+    font-size: 15px; font-weight: 700;
+  }
+  #ideaInline[hidden] { display: none !important; }
+  #ideaInline .breath { width: 64px; height: 64px; flex: none; font-size: 13px; }
+  #ideaInline .e { font-size: 22px; width: 26px; text-align: center; flex: none; }
+
+  .actions { display: flex !important; flex-direction: column; gap: 6px; }
+  .actions .pill { width: 100%; min-height: 68px; font-size: 22px; box-shadow: 0 6px 16px -4px rgba(209, 51, 51, .45); }
+  .actions .pill.green { box-shadow: 0 6px 16px -4px rgba(64, 128, 77, .45); }
+  .ghost { min-height: 44px; font-size: 17px; font-weight: 700; color: rgba(69, 36, 33, .6); }
+  .ghost.none { visibility: hidden; }
+
+  /* Harvest and settings slide up from the bottom, like a sheet. */
+  .drawer {
+    top: auto; left: 0; width: 100%; max-height: 92%; border-radius: 22px 22px 0 0;
+    padding-bottom: calc(22px + env(safe-area-inset-bottom)); transform: translateY(105%);
+  }
+  .drawer::before { content: ""; display: block; width: 40px; height: 5px; margin: -10px auto 12px; border-radius: 3px; background: rgba(69, 36, 33, .2); }
+}
 
 /* ---------- break screen ---------- */
 #break {
@@ -236,6 +288,7 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
   </header>
 
   <main class="room">
+    <div class="badge phone-only" id="longChip" hidden>LONG BREAK</div>
     <div id="tomato"><div class="squish"></div></div>
     <div id="time" class="num">25:00</div>
     <div id="line"></div>
@@ -248,7 +301,17 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
       <button class="pill big green press" id="takeBreak"></button>
     </div>
     <div class="cycle" title="Every few tomatoes earn a longer break"><div class="dots" id="dots"></div><span id="cycleText"></span></div>
+    <button class="phone-only press" id="setup"></button>
+    <div class="phone-only" id="ideaInline" hidden>
+      <div class="breath"><i></i><span>in</span></div>
+      <span class="e"></span><span class="t"></span>
+    </div>
   </main>
+
+  <div class="actions phone-only">
+    <button class="pill press" id="primary"></button>
+    <button class="ghost press" id="secondary"></button>
+  </div>
 
   <footer class="bottom">
     <span class="keys"><kbd>Space</kbd> start / pause &nbsp;·&nbsp; <kbd>R</kbd> reset</span>
@@ -277,7 +340,7 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
     <div class="card"><b class="num" id="streak">0</b><span>Day streak</span></div>
     <div class="card"><b class="num" id="allTime">0</b><span>All time</span></div>
   </div>
-  <p class="explain" style="margin-top:16px">Your tomatoes are saved in this browser, on this computer only. Nothing is sent anywhere. Clearing your browsing data will empty the basket.</p>
+  <p class="explain" style="margin-top:16px">Your tomatoes are saved in this browser, on this device only. Nothing is sent anywhere. Clearing your browsing data will empty the basket.</p>
 </aside>
 
 <aside class="drawer" id="settings" aria-label="Settings">
@@ -328,6 +391,6 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
 </div>
 
 <script src="lines.js?v=3"></script>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

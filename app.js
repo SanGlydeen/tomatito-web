@@ -162,6 +162,9 @@ function progress() {
   }
 }
 
+/** How red the tomato is: it ripens while you focus and gets eaten during a break. */
+const fill = () => m.phase === 'rest' ? clamp01(m.remaining / Math.max(1, m.restLength)) : progress();
+
 function mood() {
   switch (m.phase) {
     case 'focus': return m.running ? 'awake' : 'sleepy';
@@ -212,7 +215,7 @@ function start() {
     m.phase = 'focus';
     m.remaining = focusLength();
   }
-  if (m.phase !== 'focus') return;
+  if (m.phase !== 'focus' && m.phase !== 'rest') return;
   run();
   refreshLine();
   render();
@@ -569,6 +572,7 @@ class Tomato {
 
 const $ = id => document.getElementById(id);
 const el = {
+  primary: $('primary'), secondary: $('secondary'), setup: $('setup'), longChip: $('longChip'), ideaInline: $('ideaInline'),
   ambient: $('ambient'), dots: $('dots'), cycleText: $('cycleText'), openHarvest: $('openHarvest'), harvest: $('harvest'),
   todayNum: $('todayNum'), todayWord: $('todayWord'), weekTotal: $('weekTotal'), streak: $('streak'), allTime: $('allTime'),
   settings: $('settings'), scrim: $('scrim'), tomato: $('tomato'), time: $('time'), line: $('line'),
@@ -588,8 +592,11 @@ const bigTomato = new Tomato(el.tomato.firstElementChild, 290);
 const restTomato = new Tomato($('restTomato'), 170).set(1, 'sleepy');
 const welcomeTomato = new Tomato($('welcomeTomato'), 170).set(1, 'happy', true);
 
-el.openSettings.innerHTML = icon('gear') + '<span>Settings</span>';
-el.openHarvest.innerHTML = icon('chart') + '<span>Harvest</span><em class="num"></em>';
+el.openSettings.innerHTML = icon('gear') + '<span class="desk-only">Settings</span>';
+el.openHarvest.innerHTML = `<span class="desk-only hv">${icon('chart')}<span>Harvest</span><em class="num"></em></span>`
+  + '<span class="phone-only hv"><span></span><span></span></span>';
+const [harvestDesk, harvestPhone] = el.openHarvest.children;
+const harvestTomato = new Tomato(harvestPhone.firstElementChild, 18, { animated: false });
 el.popOut.innerHTML = icon('pip');
 document.querySelectorAll('[data-close]').forEach(b => { b.innerHTML = icon('close'); });
 el.reset.innerHTML = icon('reset');
@@ -611,7 +618,7 @@ function renderLine() {
 
 function render() {
   const pending = m.phase === 'breakPending';
-  bigTomato.set(progress(), mood(), m.running);
+  bigTomato.set(fill(), mood(), m.running);
   el.time.textContent = pending ? breakLengthLabel() : timeString();
   renderLine();
   el.focusControls.hidden = pending;
@@ -621,6 +628,7 @@ function render() {
   el.reset.disabled = m.phase === 'idle';
   el.summary.textContent = FAST ? 'fast test mode' : `${settings.focusMinutes} min focus · ${settings.shortMinutes} min break · ${settings.longMinutes} min long break`;
   renderCycle();
+  renderPhone();
   document.title = m.running ? `${timeString()} · Tomatito` : 'Tomatito';
   renderBreak();
   drawMini();
@@ -628,21 +636,99 @@ function render() {
 }
 
 /** One dot per tomato in the set that earns a long break; the growing one fills up. */
+let dotsShown = '';
 function renderCycle() {
   const n = settings.longEvery;
   const pendingLong = m.phase === 'breakPending' && m.isLongBreak;
   const done = pendingLong ? n : todayCount() % n;
   const growing = m.phase === 'focus' ? done : -1;
-  let html = '';
-  for (let i = 0; i < n; i++) {
-    html += i < done ? '<b class="full"></b>'
-      : i === growing ? `<b class="now" style="--p:${Math.round(progress() * 100)}%"></b>` : '<b></b>';
+  const pct = Math.round(progress() * 100);
+  const sig = [phone.matches, n, done, growing, pct].join();
+  if (sig !== dotsShown) {
+    dotsShown = sig;
+    if (phone.matches) {
+      // On a phone, as in the iPhone app: little tomatoes, the growing one ripening.
+      el.dots.textContent = '';
+      for (let i = 0; i < n; i++) {
+        const span = document.createElement('span');
+        const now = i === growing;
+        new Tomato(span, 22, { animated: false }).set(i < done ? 1 : now ? pct / 100 : 0, i < done ? 'happy' : 'awake');
+        span.style.opacity = i < done || now ? 1 : 0.4;
+        el.dots.append(span);
+      }
+    } else {
+      let html = '';
+      for (let i = 0; i < n; i++) {
+        html += i < done ? '<b class="full"></b>' : i === growing ? `<b class="now" style="--p:${pct}%"></b>` : '<b></b>';
+      }
+      el.dots.innerHTML = html;
+    }
   }
-  el.dots.innerHTML = html;
   const left = n - done;
   el.cycleText.textContent = pendingLong ? 'A long break, well earned 🌿'
     : left === 1 ? 'The next one earns a long break'
     : `${left} more for a long break`;
+}
+
+// ---------- phone ----------
+
+const phone = matchMedia('(max-width: 600px)');
+phone.addEventListener?.('change', () => { dotsShown = ''; render(); });
+
+/** The one big button and the quiet one under it, as in the iPhone app. */
+function phoneActions() {
+  const n = settings.longEvery, round = todayCount() % n;
+  switch (m.phase) {
+    case 'idle':
+      return [round > 0 ? `Start tomato ${round + 1} of ${n}` : 'Start', 'play', start, null, null];
+    case 'focus':
+      return [m.running ? 'Pause' : 'Keep going', m.running ? 'pause' : 'play', toggle, 'Stop', reset];
+    case 'breakPending':
+      return [`Start ${breakLengthLabel()} ${m.isLongBreak ? 'long break' : 'break'}`, 'leaf', beginRest, 'Skip the break', reset];
+    case 'rest':
+      return [m.running ? 'Pause' : 'Keep going', m.running ? 'pause' : 'play', toggle, 'Skip break', reset];
+    default:
+      return ['Start next tomato', 'play', startFocus, 'Stop for now', reset];
+  }
+}
+let primaryAction = start, secondaryAction = null;
+
+function renderPhone() {
+  const resting = phone.matches && (m.phase === 'rest' || m.phase === 'breakPending');
+  document.body.classList.toggle('resting', phone.matches && m.phase === 'rest');
+  if (!phone.matches) return keepAwake();
+  const [title, glyph, act, second, act2] = phoneActions();
+  el.primary.innerHTML = icon(glyph) + title;
+  el.primary.classList.toggle('green', resting);
+  primaryAction = act;
+  el.secondary.textContent = second || ' ';
+  el.secondary.classList.toggle('none', !second);
+  secondaryAction = act2;
+  el.setup.hidden = m.phase !== 'idle';
+  el.setup.textContent = FAST ? 'fast test mode' : `${settings.focusMinutes} min focus · ${settings.shortMinutes} min breaks`;
+  el.longChip.hidden = !(m.isLongBreak && (m.phase === 'rest' || m.phase === 'breakPending'));
+  el.ideaInline.hidden = m.phase !== 'rest';
+  const [emoji, text] = LINES.ideas[m.ideaIndex % LINES.ideas.length];
+  el.ideaInline.children[1].textContent = emoji;
+  el.ideaInline.children[2].textContent = text;
+  if (m.phase === 'restDone') el.time.textContent = '00:00';
+  keepAwake();
+}
+
+// While a tomato grows, a propped-up phone stays readable across the room.
+let wakeLock = null, wakeAsked = false;
+async function keepAwake() {
+  const want = phone.matches && m.running && document.visibilityState === 'visible' && 'wakeLock' in navigator;
+  if (want && !wakeLock && !wakeAsked) {
+    wakeAsked = true;
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; wakeAsked = false; });
+    } catch { wakeAsked = false; }
+  } else if (!want && wakeLock) {
+    wakeLock.release().catch(() => {});
+    wakeLock = null;
+  }
 }
 
 let harvestShown = '';
@@ -654,7 +740,9 @@ function renderHarvest() {
   const focused = today * settings.focusMinutes;
   el.minutes.textContent = today > 0 ? (focused >= 60 ? `${Math.floor(focused / 60)} h ${focused % 60} min focused` : `${focused} min focused`) : '';
   el.todayNum.textContent = today;
-  el.openHarvest.lastElementChild.textContent = today;
+  harvestDesk.lastElementChild.textContent = today;
+  harvestPhone.lastElementChild.textContent = today ? `× ${today} today` : 'Harvest';
+  harvestTomato.set(today ? 1 : 0, 'happy');
   el.todayWord.textContent = today === 1 ? 'tomato' : 'tomatoes';
   el.weekTotal.textContent = days.reduce((a, d) => a + d.count, 0);
   el.streak.textContent = streak();
@@ -681,7 +769,8 @@ function renderHarvest() {
 
 let ideaShown = -1;
 function renderBreak() {
-  const on = m.phase === 'rest' || m.phase === 'restDone';
+  // On a phone the break happens right on the main screen instead.
+  const on = (m.phase === 'rest' || m.phase === 'restDone') && !phone.matches;
   if (el.brk.hidden === on) {
     el.brk.hidden = !on;
     if (on) sizeBokeh();
@@ -917,7 +1006,7 @@ function drawMini(force = false) {
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, MINI_W, MINI_H);
 
-  drawTomato2D(ctx, MINI_W / 2 - 110, 26, 220, progress(), mood());
+  drawTomato2D(ctx, MINI_W / 2 - 110, 26, 220, fill(), mood());
 
   const ink = resting ? 'rgb(43,79,59)' : 'rgb(69,36,33)';
   ctx.fillStyle = ink;
@@ -995,9 +1084,13 @@ el.reset.addEventListener('click', reset);
 el.takeBreak.addEventListener('click', beginRest);
 el.again.addEventListener('click', startFocus);
 el.done.addEventListener('click', reset);
+el.primary.addEventListener('click', () => primaryAction?.());
+el.secondary.addEventListener('click', () => secondaryAction?.());
+el.setup.addEventListener('click', () => showDrawer(el.settings));
 
 // The tomato wobbles like jelly when you poke it.
 el.tomato.addEventListener('click', () => {
+  if (phone.matches) primaryAction?.();  // on a phone the tomato is a big button too
   if (reduced.matches) return;
   const s = el.tomato.firstElementChild;
   s.classList.add('on');
@@ -1073,22 +1166,24 @@ function drawBokeh(canvas, t, colors = BOKEH_COLORS, alpha = 0.1) {
   }
 }
 
+const smallBreath = el.ideaInline.querySelector('.breath i'), smallWord = el.ideaInline.querySelector('.breath span');
 function drawBreath(t) {
-  if (reduced.matches) {
-    el.breath.style.transform = 'scale(.73)';
-    el.breathWord.textContent = 'breathe slowly';
-    return;
-  }
   const c = t % 8, s = 0.5 - 0.5 * Math.cos(c / 8 * 2 * Math.PI);
-  el.breath.style.transform = `scale(${0.45 + 0.55 * s})`;
-  el.breathWord.textContent = c < 4 ? 'breathe in' : 'breathe out';
+  const scale = reduced.matches ? 'scale(.73)' : `scale(${0.45 + 0.55 * s})`;
+  el.breath.style.transform = smallBreath.style.transform = scale;
+  el.breathWord.textContent = reduced.matches ? 'breathe slowly' : c < 4 ? 'breathe in' : 'breathe out';
+  smallWord.textContent = reduced.matches ? 'breathe' : c < 4 ? 'in' : 'out';
 }
 
 function frame(now) {
   const t = reduced.matches ? 0 : (performance.timeOrigin + now) / 1000;
   for (const tm of liveTomatoes) tm.frame(t);
   if (!el.brk.hidden) { drawBokeh(el.bokeh, t); drawBreath(t); }
-  else drawBokeh(el.ambient, t, AMBIENT_COLORS, 0.09);
+  else {
+    const resting = document.body.classList.contains('resting');
+    drawBokeh(el.ambient, t, resting ? BOKEH_COLORS : AMBIENT_COLORS, 0.09);
+    if (resting) drawBreath(t);
+  }
   requestAnimationFrame(frame);
 }
 

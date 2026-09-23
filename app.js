@@ -101,12 +101,36 @@ const todayCount = () => store.get(harvestKey(new Date()), 0);
 
 /** The last seven days, oldest first. */
 function history() {
-  const letter = new Intl.DateTimeFormat(undefined, { weekday: 'narrow' });
+  const letter = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
   return [6, 5, 4, 3, 2, 1, 0].map(back => {
     const day = new Date();
     day.setDate(day.getDate() - back);
     return { label: letter.format(day), count: store.get(harvestKey(day), 0), isToday: back === 0 };
   });
+}
+
+/** Days in a row with at least one tomato, counting today only once it has one. */
+function streak() {
+  const day = new Date();
+  if (!store.get(harvestKey(day), 0)) day.setDate(day.getDate() - 1);
+  let n = 0;
+  while (n < 3650 && store.get(harvestKey(day), 0) > 0) {
+    n++;
+    day.setDate(day.getDate() - 1);
+  }
+  return n;
+}
+
+function allTime() {
+  const pattern = FAST ? /^harvest-test-\d{4}-/ : /^harvest-\d{4}-/;
+  let total = 0;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (pattern.test(key)) total += store.get(key, 0);
+    }
+  } catch {}
+  return total;
 }
 
 // ---------- model ----------
@@ -415,6 +439,7 @@ const ICON = {
   next: 'M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z',
   minus: 'M19 13H5v-2h14v2z',
   plus: 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z',
+  close: 'M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
   pip: 'M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z',
   leaf: 'M6.05 8.05c-2.73 2.73-2.73 7.15-.02 9.88 1.47-3.4 4.09-6.24 7.36-7.93-2.77 2.34-4.71 5.61-5.39 9.32 2.6 1.23 5.8.78 7.95-1.37C19.43 14.47 20 4 20 4S9.53 4.57 6.05 8.05z',
   on: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z',
@@ -540,7 +565,9 @@ class Tomato {
 
 const $ = id => document.getElementById(id);
 const el = {
-  home: $('home'), settings: $('settings'), tomato: $('tomato'), time: $('time'), line: $('line'),
+  ambient: $('ambient'), logo: $('logo'), chip: $('chip'), dots: $('dots'), cycleText: $('cycleText'),
+  todayNum: $('todayNum'), todayWord: $('todayWord'), weekTotal: $('weekTotal'), streak: $('streak'), allTime: $('allTime'),
+  settings: $('settings'), scrim: $('scrim'), tomato: $('tomato'), time: $('time'), line: $('line'),
   focusControls: $('focusControls'), pendingControls: $('pendingControls'),
   toggle: $('toggle'), reset: $('reset'), takeBreak: $('takeBreak'),
   minutes: $('minutes'), basket: $('basket'), week: $('week'), summary: $('summary'),
@@ -555,15 +582,16 @@ const el = {
   miniToggle: $('miniToggle'), miniReset: $('miniReset'),
 };
 
-const bigTomato = new Tomato(el.tomato.firstElementChild, 150);
+const bigTomato = new Tomato(el.tomato.firstElementChild, 290);
+new Tomato(el.logo, 32, { animated: false }).set(0.7, 'awake');
 const restTomato = new Tomato($('restTomato'), 170).set(1, 'sleepy');
 const welcomeTomato = new Tomato($('welcomeTomato'), 170).set(1, 'happy', true);
 const miniTomato = new Tomato(el.miniTomato, 100);
 miniTomato.svg.style.cssText += ';width:min(52vw,48vh);height:auto';
 
-el.openSettings.innerHTML = icon('gear');
-el.closeSettings.innerHTML = icon('back');
-el.popOut.innerHTML = icon('pip');
+el.openSettings.innerHTML = icon('gear') + '<span>Settings</span>';
+el.closeSettings.innerHTML = icon('close');
+el.popOut.innerHTML = icon('pip') + '<span>Pop-out timer</span>';
 el.reset.innerHTML = icon('reset');
 el.takeBreak.innerHTML = icon('leaf') + '<span></span>';
 el.again.innerHTML = icon('play') + 'Grow another tomato';
@@ -592,11 +620,45 @@ function render() {
   el.takeBreak.lastElementChild.textContent = `Take ${m.isLongBreak ? 'long break' : 'break'} now`;
   el.toggle.innerHTML = icon(m.running ? 'pause' : 'play') + (m.running ? 'Pause' : m.phase === 'focus' ? 'Resume' : 'Start focus');
   el.reset.disabled = m.phase === 'idle';
-  el.summary.textContent = FAST ? 'fast test mode' : `${settings.focusMinutes} min focus · ${settings.shortMinutes} min break`;
+  el.summary.textContent = FAST ? 'fast test mode' : `${settings.focusMinutes} min focus · ${settings.shortMinutes} min break · ${settings.longMinutes} min long break`;
+  renderChip();
+  renderCycle();
   document.title = m.running ? `${timeString()} · Tomatito` : 'Tomatito';
   renderBreak();
   renderMini();
   renderHarvest();
+}
+
+const CHIPS = {
+  idle: ['', 'READY WHEN YOU ARE'],
+  focus: ['focus live', 'FOCUSING'],
+  paused: ['focus', 'PAUSED'],
+  breakPending: ['ready', 'BREAK TIME'],
+  rest: ['ready', 'ON A BREAK'],
+  restDone: ['', 'READY WHEN YOU ARE'],
+};
+function renderChip() {
+  const [cls, text] = CHIPS[m.phase === 'focus' && !m.running ? 'paused' : m.phase];
+  el.chip.className = 'chip ' + cls;
+  el.chip.lastElementChild.textContent = text;
+}
+
+/** One dot per tomato in the set that earns a long break; the growing one fills up. */
+function renderCycle() {
+  const n = settings.longEvery;
+  const pendingLong = m.phase === 'breakPending' && m.isLongBreak;
+  const done = pendingLong ? n : todayCount() % n;
+  const growing = m.phase === 'focus' ? done : -1;
+  let html = '';
+  for (let i = 0; i < n; i++) {
+    html += i < done ? '<b class="full"></b>'
+      : i === growing ? `<b class="now" style="--p:${Math.round(progress() * 100)}%"></b>` : '<b></b>';
+  }
+  el.dots.innerHTML = html;
+  const left = n - done;
+  el.cycleText.textContent = pendingLong ? 'A long break, well earned 🌿'
+    : left === 1 ? 'The next one earns a long break'
+    : `${left} more for a long break`;
 }
 
 let harvestShown = '';
@@ -605,23 +667,29 @@ function renderHarvest() {
   const sig = JSON.stringify(days) + settings.focusMinutes;
   if (sig === harvestShown) return;
   harvestShown = sig;
-  el.minutes.textContent = today > 0 ? `${today * settings.focusMinutes} min` : '';
+  const focused = today * settings.focusMinutes;
+  el.minutes.textContent = today > 0 ? (focused >= 60 ? `${Math.floor(focused / 60)} h ${focused % 60} min focused` : `${focused} min focused`) : '';
+  el.todayNum.textContent = today;
+  el.todayWord.textContent = today === 1 ? 'tomato' : 'tomatoes';
+  el.weekTotal.textContent = days.reduce((a, d) => a + d.count, 0);
+  el.streak.textContent = streak();
+  el.allTime.textContent = allTime();
   if (today === 0) {
     el.basket.textContent = pick('empty', LINES.emptyHarvest);
   } else {
     el.basket.textContent = '';
-    for (let i = 0; i < Math.min(today, 8); i++) {
+    for (let i = 0; i < Math.min(today, 12); i++) {
       const span = document.createElement('span');
-      new Tomato(span, 24, { animated: false }).set(1, 'happy');
+      new Tomato(span, 30, { animated: false }).set(1, 'happy');
       el.basket.append(span);
     }
-    if (today > 8) el.basket.insertAdjacentHTML('beforeend', `<b>+${today - 8}</b>`);
+    if (today > 12) el.basket.insertAdjacentHTML('beforeend', `<b>+${today - 12}</b>`);
   }
   const peak = Math.max(1, ...days.map(d => d.count));
   el.week.innerHTML = days.map(d => `
     <div class="${d.isToday ? 'today' : d.count ? 'some' : ''}">
       <span class="n">${d.count || ''}</span>
-      <span class="bar" style="height:${4 + 22 * d.count / peak}px"></span>
+      <span class="bar" style="height:${6 + 64 * d.count / peak}px"></span>
       <span class="d">${d.label}</span>
     </div>`).join('');
 }
@@ -751,8 +819,16 @@ el.restore.addEventListener('click', () => {
   render();
 });
 
-el.openSettings.addEventListener('click', () => { renderSettings(); el.home.hidden = true; el.settings.hidden = false; });
-el.closeSettings.addEventListener('click', () => { el.settings.hidden = true; el.home.hidden = false; });
+const settingsOpen = () => document.body.classList.contains('settings-open');
+function showSettings(on) {
+  if (on) renderSettings();
+  document.body.classList.toggle('settings-open', on);
+  el.settings.inert = !on;
+}
+showSettings(false);
+el.openSettings.addEventListener('click', () => showSettings(true));
+el.closeSettings.addEventListener('click', () => showSettings(false));
+el.scrim.addEventListener('click', () => showSettings(false));
 
 // ---------- mini timer: a picture-in-picture window that stays on top ----------
 
@@ -815,9 +891,12 @@ document.addEventListener('pointerup', e => {
 document.addEventListener('animationend', e => { if (e.animationName === 'pop') e.target.classList.remove('pop'); });
 
 addEventListener('keydown', e => {
+  if (e.key === 'Enter' && m.phase === 'restDone' && !e.target.closest?.('button')) return startFocus();
   if (e.target.closest?.('button') && (e.key === ' ' || e.key === 'Enter')) return;
-  if (e.key === ' ' && !el.home.hidden && el.brk.hidden) { e.preventDefault(); toggle(); }
-  if (e.key === 'Enter' && m.phase === 'restDone') startFocus();
+  if (e.key === 'Escape' && settingsOpen()) return showSettings(false);
+  if (settingsOpen() || !el.brk.hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === ' ') { e.preventDefault(); toggle(); }
+  if ((e.key === 'r' || e.key === 'R') && m.phase !== 'idle') reset();
 });
 
 // Skipping takes a deliberate four-second hold.
@@ -844,14 +923,17 @@ el.skip.addEventListener('click', e => e.preventDefault());
 
 function sizeBokeh() {
   const r = devicePixelRatio || 1;
-  el.bokeh.width = innerWidth * r;
-  el.bokeh.height = innerHeight * r;
+  for (const c of [el.bokeh, el.ambient]) {
+    c.width = innerWidth * r;
+    c.height = innerHeight * r;
+  }
 }
-addEventListener('resize', () => { if (!el.brk.hidden) sizeBokeh(); });
+addEventListener('resize', sizeBokeh);
 
 const BOKEH_COLORS = ['245,92,79', '102,179,102', '255,255,255'];
-function drawBokeh(t) {
-  const ctx = el.bokeh.getContext('2d'), w = el.bokeh.width, h = el.bokeh.height, r0 = devicePixelRatio || 1;
+const AMBIENT_COLORS = ['245,92,79', '252,190,160', '255,255,255'];
+function drawBokeh(canvas, t, colors = BOKEH_COLORS, alpha = 0.1) {
+  const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height, r0 = devicePixelRatio || 1;
   ctx.clearRect(0, 0, w, h);
   for (let i = 0; i < 16; i++) {
     const seed = i * 12.9898;
@@ -860,7 +942,7 @@ function drawBokeh(t) {
     const y = 1.1 - ((t * speed + fx * 3) % 1.3);
     const x = fx + 0.04 * Math.sin(t * 0.3 + seed);
     const r = (30 + 90 * ((i % 5) / 5)) * r0;
-    ctx.fillStyle = `rgba(${BOKEH_COLORS[i % 3]},.10)`;
+    ctx.fillStyle = `rgba(${colors[i % 3]},${alpha})`;
     ctx.beginPath();
     ctx.arc(x * w, y * h, r, 0, Math.PI * 2);
     ctx.fill();
@@ -887,7 +969,8 @@ function startFrames() {
     if (token !== frameToken) return;
     const t = reduced.matches ? 0 : (performance.timeOrigin + now) / 1000;
     for (const tm of liveTomatoes) tm.frame(t);
-    if (!el.brk.hidden) { drawBokeh(t); drawBreath(t); }
+    if (!el.brk.hidden) { drawBokeh(el.bokeh, t); drawBreath(t); }
+    else if (win === window) drawBokeh(el.ambient, t, AMBIENT_COLORS, 0.09);
     win.requestAnimationFrame(frame);
   };
   win.requestAnimationFrame(frame);
@@ -903,11 +986,12 @@ function startClock() {
 
 // ---------- start up ----------
 
-// First launch as an installed app: open at a size that fits the card.
+// First launch as an installed app: open at a comfortable size.
 if (matchMedia('(display-mode: standalone)').matches && !store.get('sized', false)) {
-  try { resizeTo(400, Math.min(820, screen.availHeight)); } catch {}
+  try { resizeTo(Math.min(1100, screen.availWidth), Math.min(780, screen.availHeight)); } catch {}
   store.set('sized', true);
 }
+sizeBokeh();
 
 restore();
 render();

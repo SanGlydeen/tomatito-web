@@ -6,8 +6,11 @@ self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  // Our own files always check with the server, so a new page never meets an old script.
+  const own = new URL(e.request.url).origin === location.origin;
+  const request = own ? new Request(e.request.url, { cache: 'no-cache' }) : e.request;
   e.respondWith(
-    fetch(e.request)
+    fetch(request)
       .then(res => {
         if (res.ok || res.type === 'opaque') {
           const copy = res.clone();

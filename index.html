@@ -85,9 +85,9 @@ svg.i { width: 1em; height: 1em; fill: currentColor; flex: none; }
 /* ---------- the room ---------- */
 #ambient { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 #shell { position: relative; min-height: 100%; display: flex; flex-direction: column; padding: 18px clamp(16px, 4vw, 48px) 16px; }
-.top, .room, .bottom { width: 100%; max-width: 1160px; margin: 0 auto; }
+.top, .bottom { width: 100%; max-width: 1160px; margin: 0 auto; }
 .top { display: flex; align-items: center; gap: 10px; }
-.brand { flex: 1; display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 900; color: var(--deep); }
+.brand { flex: 1; font-size: 22px; font-weight: 900; color: var(--deep); }
 .tool {
   display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 999px;
   background: rgba(255, 255, 255, .72); box-shadow: 0 2px 8px -2px rgba(209, 51, 51, .15);
@@ -95,22 +95,10 @@ svg.i { width: 1em; height: 1em; fill: currentColor; flex: none; }
 }
 .tool:hover { background: #fff; }
 .tool svg { font-size: 17px; }
+.tool em { font-style: normal; min-width: 22px; padding: 1px 7px; border-radius: 999px; background: linear-gradient(var(--red), var(--deep)); color: #fff; font-size: 12px; font-weight: 800; text-align: center; }
 
-.room {
-  flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 350px;
-  gap: clamp(24px, 5vw, 72px); align-items: center; padding: 20px 0;
-}
-.hero { display: flex; flex-direction: column; align-items: center; text-align: center; }
-.chip {
-  display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px;
-  font-size: 12px; font-weight: 900; letter-spacing: 1.5px; background: rgba(69, 36, 33, .07); color: rgba(69, 36, 33, .55);
-}
-.chip i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-.chip.focus { background: rgba(245, 92, 79, .13); color: var(--deep); }
-.chip.live i { animation: blink 1.6s ease-in-out infinite; }
-.chip.ready { background: rgba(102, 179, 102, .2); color: var(--leaf-dark); }
-@keyframes blink { 50% { opacity: .2; } }
-#tomato { position: relative; margin-top: clamp(14px, 3vh, 30px); cursor: pointer; }
+.room { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 12px 0 20px; }
+#tomato { position: relative; cursor: pointer; }
 #tomato svg { width: min(34vh, 290px, 64vw) !important; height: auto !important; }
 #tomato::after {
   content: ""; position: absolute; z-index: -1; left: 16%; right: 16%; bottom: -16px; height: 22px;
@@ -133,20 +121,46 @@ svg.i { width: 1em; height: 1em; fill: currentColor; flex: none; }
 .dots b { position: relative; width: 15px; height: 15px; border-radius: 50%; overflow: hidden; background: rgba(69, 36, 33, .1); }
 .dots b.full { background: linear-gradient(var(--red), var(--deep)); }
 .dots b.now::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--p); background: linear-gradient(var(--red), var(--deep)); }
-
-.side { display: flex; flex-direction: column; gap: 14px; }
-.card {
-  background: rgba(255, 255, 255, .72); border-radius: 22px; padding: 20px;
-  box-shadow: 0 14px 34px -16px rgba(209, 51, 51, .25); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+.popout {
+  margin-top: 20px; display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px;
+  font-size: 13.5px; font-weight: 700; color: rgba(69, 36, 33, .55); --ring: rgba(69, 36, 33, .3);
 }
+.popout:hover { background: rgba(255, 255, 255, .7); color: rgba(69, 36, 33, .8); }
+.popout svg { font-size: 16px; }
+
+.bottom { display: flex; justify-content: space-between; gap: 16px; font-size: 12.5px; font-weight: 600; color: rgba(69, 36, 33, .45); }
+kbd { font: inherit; font-weight: 800; padding: 1px 7px; border-radius: 6px; background: rgba(255, 255, 255, .8); box-shadow: 0 1px 0 rgba(69, 36, 33, .15); color: rgba(69, 36, 33, .7); }
+
+@media (max-width: 560px) {
+  .tool > span, .keys, .popout { display: none; }
+  .tool { padding: 10px; }
+  .bottom { justify-content: center; }
+}
+
+/* ---------- side drawers: harvest and settings ---------- */
+#scrim { position: fixed; inset: 0; z-index: 5; background: rgba(69, 36, 33, .2); opacity: 0; pointer-events: none; transition: opacity .25s; }
+body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 6; width: min(390px, 100%); overflow: auto;
+  padding: 22px 20px; background: linear-gradient(var(--cream), var(--blush));
+  box-shadow: -24px 0 60px -24px rgba(69, 36, 33, .35);
+  transform: translateX(105%); visibility: hidden;
+  transition: transform .32s cubic-bezier(.2, .9, .3, 1), visibility 0s .32s;
+}
+.drawer.open { transform: none; visibility: visible; transition: transform .32s cubic-bezier(.2, .9, .3, 1); }
+.drawer header { display: flex; align-items: center; gap: 8px; }
+.drawer h2 { margin: 0; flex: 1; font-size: 20px; font-weight: 900; color: var(--deep); }
+.drawer .card { margin-top: 14px; display: flex; flex-direction: column; gap: 12px; padding: 16px; background: rgba(255, 255, 255, .72); border-radius: 18px; }
+.drawer .mini { width: 28px; height: 28px; font-size: 15px; }
+.drawer footer { margin-top: 14px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; color: rgba(69, 36, 33, .45); }
+
 .eyebrow { display: flex; justify-content: space-between; font-size: 11px; font-weight: 800; letter-spacing: 1.3px; color: rgba(69, 36, 33, .45); }
 .eyebrow span:last-child { letter-spacing: 0; font-weight: 700; font-size: 12px; }
-.big-stat { margin-top: 10px; display: flex; align-items: baseline; gap: 8px; }
+.big-stat { display: flex; align-items: baseline; gap: 8px; margin-top: -4px; }
 .big-stat b { font-size: 46px; font-weight: 900; line-height: 1; color: var(--deep); }
 .big-stat span { font-size: 16px; font-weight: 700; color: rgba(69, 36, 33, .55); }
-#basket { margin-top: 12px; min-height: 30px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: rgba(69, 36, 33, .6); }
+#basket { min-height: 30px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: rgba(69, 36, 33, .6); }
 #basket b { font-size: 14px; color: var(--deep); }
-hr { border: 0; border-top: 1px solid rgba(69, 36, 33, .1); margin: 16px 0 10px; }
 #week { display: flex; align-items: flex-end; height: 112px; }
 #week div { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 11px; font-weight: 800; }
 #week .n { color: rgba(209, 51, 51, .75); min-height: 14px; }
@@ -155,40 +169,11 @@ hr { border: 0; border-top: 1px solid rgba(69, 36, 33, .1); margin: 16px 0 10px;
 #week .today .bar { background: linear-gradient(var(--red), var(--deep)); }
 #week .d { font-weight: 600; color: rgba(69, 36, 33, .4); }
 #week .today .d { font-weight: 900; color: rgba(69, 36, 33, .75); }
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-.stat { padding: 14px 8px; text-align: center; }
-.stat b { display: block; font-size: 26px; font-weight: 900; line-height: 1.1; }
-.stat span { font-size: 10.5px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: rgba(69, 36, 33, .45); }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.drawer .stats .card { margin-top: 14px; gap: 2px; padding: 14px 6px; text-align: center; }
+.stats b { font-size: 26px; font-weight: 900; line-height: 1.1; }
+.stats span { font-size: 10.5px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: rgba(69, 36, 33, .45); }
 
-.bottom { display: flex; justify-content: space-between; gap: 16px; font-size: 12.5px; font-weight: 600; color: rgba(69, 36, 33, .45); }
-kbd { font: inherit; font-weight: 800; padding: 1px 7px; border-radius: 6px; background: rgba(255, 255, 255, .8); box-shadow: 0 1px 0 rgba(69, 36, 33, .15); color: rgba(69, 36, 33, .7); }
-
-@media (max-width: 900px) {
-  .room { grid-template-columns: 1fr; gap: 36px; }
-  .side { width: 100%; max-width: 480px; margin: 0 auto; }
-}
-@media (max-width: 560px) {
-  .tool span, .keys { display: none; }
-  .tool { padding: 10px; }
-  .bottom { justify-content: center; }
-}
-
-/* ---------- settings drawer ---------- */
-#scrim { position: fixed; inset: 0; z-index: 5; background: rgba(69, 36, 33, .2); opacity: 0; pointer-events: none; transition: opacity .25s; }
-#settings {
-  position: fixed; top: 0; right: 0; bottom: 0; z-index: 6; width: min(380px, 100%); overflow: auto;
-  padding: 22px 20px; background: linear-gradient(var(--cream), var(--blush));
-  box-shadow: -24px 0 60px -24px rgba(69, 36, 33, .35);
-  transform: translateX(105%); visibility: hidden;
-  transition: transform .32s cubic-bezier(.2, .9, .3, 1), visibility 0s .32s;
-}
-body.settings-open #settings { transform: none; visibility: visible; transition: transform .32s cubic-bezier(.2, .9, .3, 1); }
-body.settings-open #scrim { opacity: 1; pointer-events: auto; }
-#settings header { display: flex; align-items: center; gap: 8px; }
-#settings h2 { margin: 0; flex: 1; font-size: 20px; font-weight: 900; color: var(--deep); }
-#settings .card { margin-top: 14px; display: flex; flex-direction: column; gap: 12px; padding: 16px; box-shadow: none; }
-#settings .mini { width: 28px; height: 28px; font-size: 15px; }
-#settings footer { margin-top: 14px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; color: rgba(69, 36, 33, .45); }
 .row { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 600; color: rgba(69, 36, 33, .75); }
 .row > span:first-child { flex: 1; }
 .row .val { width: 68px; text-align: center; font-weight: 800; color: var(--ink); }
@@ -198,8 +183,9 @@ body.settings-open #scrim { opacity: 1; pointer-events: auto; }
 .check > span:first-child svg { font-size: 18px; color: rgba(69, 36, 33, .35); }
 .check.on > span:first-child svg { color: var(--leaf-dark); }
 .check small { display: block; font-size: 12px; font-weight: 600; color: rgba(69, 36, 33, .45); }
-#settings .card.checks { padding: 8px 6px; }
-.explain { margin: 2px 0 0; font-size: 12px; font-weight: 600; color: rgba(69, 36, 33, .45); }
+.drawer .card.checks { padding: 8px 6px; }
+.explain { margin: 0; font-size: 12.5px; font-weight: 600; line-height: 1.45; color: rgba(69, 36, 33, .5); }
+
 /* ---------- break screen ---------- */
 #break {
   position: fixed; inset: 0; z-index: 10; overflow: auto;
@@ -264,41 +250,24 @@ body.settings-open #scrim { opacity: 1; pointer-events: auto; }
 <canvas id="ambient"></canvas>
 <div id="shell">
   <header class="top">
-    <div class="brand"><span id="logo"></span>Tomatito</div>
-    <button class="tool press" id="popOut" title="A tiny timer that floats above your other windows" hidden></button>
+    <div class="brand">Tomatito</div>
+    <button class="tool press" id="openHarvest" title="Your harvest: today, this week and all time"></button>
     <button class="tool press" id="openSettings" title="Settings"></button>
   </header>
 
   <main class="room">
-    <section class="hero">
-      <div class="chip" id="chip"><i></i><span></span></div>
-      <div id="tomato"><div class="squish"></div></div>
-      <div id="time" class="num">25:00</div>
-      <div id="line"></div>
-      <div class="controls" id="focusControls">
-        <button class="soft round press" id="reset" title="Reset" aria-label="Reset"></button>
-        <button class="pill big press" id="toggle"></button>
-      </div>
-      <div class="controls" id="pendingControls" hidden>
-        <button class="pill big green press" id="takeBreak"></button>
-      </div>
-      <div class="cycle"><div class="dots" id="dots"></div><span id="cycleText"></span></div>
-    </section>
-
-    <aside class="side">
-      <div class="card">
-        <div class="eyebrow"><span>TODAY'S HARVEST</span><span id="minutes"></span></div>
-        <div class="big-stat"><b class="num" id="todayNum">0</b><span id="todayWord">tomatoes</span></div>
-        <div id="basket"></div>
-        <hr>
-        <div id="week"></div>
-      </div>
-      <div class="stats">
-        <div class="card stat"><b class="num" id="weekTotal">0</b><span>This week</span></div>
-        <div class="card stat"><b class="num" id="streak">0</b><span>Day streak</span></div>
-        <div class="card stat"><b class="num" id="allTime">0</b><span>All time</span></div>
-      </div>
-    </aside>
+    <div id="tomato"><div class="squish"></div></div>
+    <div id="time" class="num">25:00</div>
+    <div id="line"></div>
+    <div class="controls" id="focusControls">
+      <button class="soft round press" id="reset" title="Reset" aria-label="Reset"></button>
+      <button class="pill big press" id="toggle"></button>
+    </div>
+    <div class="controls" id="pendingControls" hidden>
+      <button class="pill big green press" id="takeBreak"></button>
+    </div>
+    <div class="cycle" title="Every few tomatoes earn a longer break"><div class="dots" id="dots"></div><span id="cycleText"></span></div>
+    <button class="popout press" id="popOut" hidden></button>
   </main>
 
   <footer class="bottom">
@@ -308,10 +277,33 @@ body.settings-open #scrim { opacity: 1; pointer-events: auto; }
 </div>
 
 <div id="scrim"></div>
-<aside id="settings" aria-label="Settings">
+
+<aside class="drawer" id="harvest" aria-label="Your harvest">
+  <header>
+    <h2>Your harvest</h2>
+    <button class="mini press" data-close title="Close" aria-label="Close"></button>
+  </header>
+  <div class="card">
+    <div class="eyebrow"><span>TODAY</span><span id="minutes"></span></div>
+    <div class="big-stat"><b class="num" id="todayNum">0</b><span id="todayWord">tomatoes</span></div>
+    <div id="basket"></div>
+  </div>
+  <div class="card">
+    <div class="eyebrow"><span>THE LAST 7 DAYS</span></div>
+    <div id="week"></div>
+  </div>
+  <div class="stats">
+    <div class="card"><b class="num" id="weekTotal">0</b><span>This week</span></div>
+    <div class="card"><b class="num" id="streak">0</b><span>Day streak</span></div>
+    <div class="card"><b class="num" id="allTime">0</b><span>All time</span></div>
+  </div>
+  <p class="explain" style="margin-top:16px">Your tomatoes are saved in this browser, on this computer only. Nothing is sent anywhere. Clearing your browsing data will empty the basket.</p>
+</aside>
+
+<aside class="drawer" id="settings" aria-label="Settings">
   <header>
     <h2>Settings</h2>
-    <button class="mini press" id="closeSettings" title="Close" aria-label="Close"></button>
+    <button class="mini press" data-close title="Close" aria-label="Close"></button>
   </header>
   <div class="card" id="steps"></div>
   <div class="card">
@@ -320,19 +312,16 @@ body.settings-open #scrim { opacity: 1; pointer-events: auto; }
       <span class="val wide" id="chimeName"></span>
       <button class="mini press" data-chime="1" aria-label="Next chime"></button>
     </div>
-    <div id="miniRow">
-      <div class="row"><span>Pop-out timer size</span>
-        <button class="mini press" data-mini="-1" aria-label="Smaller"></button>
-        <span class="val wide" id="miniName"></span>
-        <button class="mini press" data-mini="1" aria-label="Bigger"></button>
-      </div>
-      <p class="explain">The pop-out timer is a tiny window that stays on top of everything else, so you can keep an eye on your tomato while you work.</p>
+    <div class="row" id="miniRow"><span>Mini timer size</span>
+      <button class="mini press" data-mini="-1" aria-label="Smaller"></button>
+      <span class="val wide" id="miniName"></span>
+      <button class="mini press" data-mini="1" aria-label="Bigger"></button>
     </div>
   </div>
   <div class="card checks">
     <button class="check press" id="notifyCheck"><span></span><span>Tell me when a tomato is ripe<small id="notifyNote"></small></span></button>
   </div>
-  <footer><button class="link press" id="restore">Restore defaults</button><span>v1.1</span></footer>
+  <footer><button class="link press" id="restore">Restore defaults</button><span>v1.2</span></footer>
 </aside>
 
 <div id="break" hidden>
@@ -375,7 +364,7 @@ body.settings-open #scrim { opacity: 1; pointer-events: auto; }
   <div class="ml" id="miniLine"></div>
 </div>
 
-<script src="lines.js"></script>
-<script src="app.js"></script>
+<script src="lines.js?v=3"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

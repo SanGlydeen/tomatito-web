@@ -439,6 +439,7 @@ const ICON = {
   next: 'M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z',
   minus: 'M19 13H5v-2h14v2z',
   plus: 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z',
+  chart: 'M5 9.2h3V19H5zM10.6 5h2.8v14h-2.8zm5.6 8H19v6h-2.8z',
   close: 'M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
   pip: 'M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z',
   leaf: 'M6.05 8.05c-2.73 2.73-2.73 7.15-.02 9.88 1.47-3.4 4.09-6.24 7.36-7.93-2.77 2.34-4.71 5.61-5.39 9.32 2.6 1.23 5.8.78 7.95-1.37C19.43 14.47 20 4 20 4S9.53 4.57 6.05 8.05z',
@@ -565,13 +566,13 @@ class Tomato {
 
 const $ = id => document.getElementById(id);
 const el = {
-  ambient: $('ambient'), logo: $('logo'), chip: $('chip'), dots: $('dots'), cycleText: $('cycleText'),
+  ambient: $('ambient'), dots: $('dots'), cycleText: $('cycleText'), openHarvest: $('openHarvest'), harvest: $('harvest'),
   todayNum: $('todayNum'), todayWord: $('todayWord'), weekTotal: $('weekTotal'), streak: $('streak'), allTime: $('allTime'),
   settings: $('settings'), scrim: $('scrim'), tomato: $('tomato'), time: $('time'), line: $('line'),
   focusControls: $('focusControls'), pendingControls: $('pendingControls'),
   toggle: $('toggle'), reset: $('reset'), takeBreak: $('takeBreak'),
   minutes: $('minutes'), basket: $('basket'), week: $('week'), summary: $('summary'),
-  popOut: $('popOut'), openSettings: $('openSettings'), closeSettings: $('closeSettings'),
+  popOut: $('popOut'), openSettings: $('openSettings'),
   steps: $('steps'), chimeName: $('chimeName'), miniName: $('miniName'), miniRow: $('miniRow'),
   notifyCheck: $('notifyCheck'), notifyNote: $('notifyNote'), restore: $('restore'),
   brk: $('break'), bokeh: $('bokeh'), resting: $('resting'), welcome: $('welcome'), skip: $('skip'),
@@ -583,15 +584,15 @@ const el = {
 };
 
 const bigTomato = new Tomato(el.tomato.firstElementChild, 290);
-new Tomato(el.logo, 32, { animated: false }).set(0.7, 'awake');
 const restTomato = new Tomato($('restTomato'), 170).set(1, 'sleepy');
 const welcomeTomato = new Tomato($('welcomeTomato'), 170).set(1, 'happy', true);
 const miniTomato = new Tomato(el.miniTomato, 100);
 miniTomato.svg.style.cssText += ';width:min(52vw,48vh);height:auto';
 
 el.openSettings.innerHTML = icon('gear') + '<span>Settings</span>';
-el.closeSettings.innerHTML = icon('close');
-el.popOut.innerHTML = icon('pip') + '<span>Pop-out timer</span>';
+el.openHarvest.innerHTML = icon('chart') + '<span>Harvest</span><em class="num"></em>';
+el.popOut.innerHTML = icon('pip') + '<span>Keep a mini timer on top of your other windows</span>';
+document.querySelectorAll('[data-close]').forEach(b => { b.innerHTML = icon('close'); });
 el.reset.innerHTML = icon('reset');
 el.takeBreak.innerHTML = icon('leaf') + '<span></span>';
 el.again.innerHTML = icon('play') + 'Grow another tomato';
@@ -621,26 +622,11 @@ function render() {
   el.toggle.innerHTML = icon(m.running ? 'pause' : 'play') + (m.running ? 'Pause' : m.phase === 'focus' ? 'Resume' : 'Start focus');
   el.reset.disabled = m.phase === 'idle';
   el.summary.textContent = FAST ? 'fast test mode' : `${settings.focusMinutes} min focus · ${settings.shortMinutes} min break · ${settings.longMinutes} min long break`;
-  renderChip();
   renderCycle();
   document.title = m.running ? `${timeString()} · Tomatito` : 'Tomatito';
   renderBreak();
   renderMini();
   renderHarvest();
-}
-
-const CHIPS = {
-  idle: ['', 'READY WHEN YOU ARE'],
-  focus: ['focus live', 'FOCUSING'],
-  paused: ['focus', 'PAUSED'],
-  breakPending: ['ready', 'BREAK TIME'],
-  rest: ['ready', 'ON A BREAK'],
-  restDone: ['', 'READY WHEN YOU ARE'],
-};
-function renderChip() {
-  const [cls, text] = CHIPS[m.phase === 'focus' && !m.running ? 'paused' : m.phase];
-  el.chip.className = 'chip ' + cls;
-  el.chip.lastElementChild.textContent = text;
 }
 
 /** One dot per tomato in the set that earns a long break; the growing one fills up. */
@@ -670,6 +656,7 @@ function renderHarvest() {
   const focused = today * settings.focusMinutes;
   el.minutes.textContent = today > 0 ? (focused >= 60 ? `${Math.floor(focused / 60)} h ${focused % 60} min focused` : `${focused} min focused`) : '';
   el.todayNum.textContent = today;
+  el.openHarvest.lastElementChild.textContent = today;
   el.todayWord.textContent = today === 1 ? 'tomato' : 'tomatoes';
   el.weekTotal.textContent = days.reduce((a, d) => a + d.count, 0);
   el.streak.textContent = streak();
@@ -819,16 +806,21 @@ el.restore.addEventListener('click', () => {
   render();
 });
 
-const settingsOpen = () => document.body.classList.contains('settings-open');
-function showSettings(on) {
-  if (on) renderSettings();
-  document.body.classList.toggle('settings-open', on);
-  el.settings.inert = !on;
+// Harvest and settings slide in from the side; one at a time.
+const drawerOpen = () => document.body.classList.contains('drawer-open');
+function showDrawer(drawer) {
+  if (drawer === el.settings) renderSettings();
+  for (const d of [el.harvest, el.settings]) {
+    d.classList.toggle('open', d === drawer);
+    d.inert = d !== drawer;
+  }
+  document.body.classList.toggle('drawer-open', !!drawer);
 }
-showSettings(false);
-el.openSettings.addEventListener('click', () => showSettings(true));
-el.closeSettings.addEventListener('click', () => showSettings(false));
-el.scrim.addEventListener('click', () => showSettings(false));
+showDrawer(null);
+el.openHarvest.addEventListener('click', () => showDrawer(el.harvest));
+el.openSettings.addEventListener('click', () => showDrawer(el.settings));
+el.scrim.addEventListener('click', () => showDrawer(null));
+document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => showDrawer(null)));
 
 // ---------- mini timer: a picture-in-picture window that stays on top ----------
 
@@ -893,8 +885,8 @@ document.addEventListener('animationend', e => { if (e.animationName === 'pop') 
 addEventListener('keydown', e => {
   if (e.key === 'Enter' && m.phase === 'restDone' && !e.target.closest?.('button')) return startFocus();
   if (e.target.closest?.('button') && (e.key === ' ' || e.key === 'Enter')) return;
-  if (e.key === 'Escape' && settingsOpen()) return showSettings(false);
-  if (settingsOpen() || !el.brk.hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'Escape' && drawerOpen()) return showDrawer(null);
+  if (drawerOpen() || !el.brk.hidden || e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.key === ' ') { e.preventDefault(); toggle(); }
   if ((e.key === 'r' || e.key === 'R') && m.phase !== 'idle') reset();
 });

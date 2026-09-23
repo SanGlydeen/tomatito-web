@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tomatito</title>
+<meta name="description" content="A very cute pomodoro timer. A tomato ripens while you focus.">
+<meta name="theme-color" content="#fff8ee">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --red: rgb(245, 92, 79);
+  --deep: rgb(209, 51, 51);
+  --pale: rgb(255, 232, 224);
+  --leaf: rgb(102, 179, 102);
+  --leaf-dark: rgb(64, 128, 77);
+  --cream: rgb(255, 247, 237);
+  --blush: rgb(255, 237, 230);
+  --ink: rgb(69, 36, 33);
+  --forest: rgb(43, 79, 59);
+  --mint: rgb(209, 237, 214);
+  --peach: rgb(252, 227, 214);
+  --spring: cubic-bezier(.34, 1.7, .5, 1);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: Nunito, ui-rounded, "Segoe UI", system-ui, sans-serif;
+  color: var(--ink);
+  background: linear-gradient(var(--cream), var(--blush)) fixed;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  overflow-x: hidden;
+}
+button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; }
+button:disabled { cursor: default; }
+button:focus-visible { outline: 2px solid var(--deep); outline-offset: 3px; }
+svg.i { width: 1em; height: 1em; fill: currentColor; flex: none; }
+.num { font-variant-numeric: tabular-nums; }
+[hidden] { display: none !important; }
+
+/* ---------- press feedback: squish while held, springy pop and a ripple on release ---------- */
+.press { position: relative; transition: transform .22s var(--spring), filter .15s, box-shadow .15s; }
+.press:not(:disabled):active { transform: scale(.88); filter: brightness(.93); transition-duration: .08s; }
+.press::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  border: 2px solid var(--ring, var(--red)); opacity: 0;
+}
+.press.pop { animation: pop .3s var(--spring); }
+.press.pop::after { animation: ripple .45s ease-out; }
+@keyframes pop { 40% { transform: scale(1.07); } }
+@keyframes ripple { from { inset: 0; opacity: .7; } to { inset: -7px; opacity: 0; } }
+
+.pill {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-width: 170px; padding: 11px 22px; border-radius: 999px;
+  font-size: 15px; font-weight: 800; color: #fff;
+  background: linear-gradient(var(--red), var(--deep));
+  box-shadow: 0 3px 6px rgba(209, 51, 51, .35);
+}
+.pill.green { background: linear-gradient(var(--leaf), var(--leaf-dark)); box-shadow: 0 3px 6px rgba(64, 128, 77, .35); --ring: var(--leaf); }
+.pill:active { box-shadow: 0 1px 2px rgba(209, 51, 51, .15); }
+.soft {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 11px 16px; border-radius: 999px; font-size: 15px; font-weight: 700;
+  background: rgba(255, 255, 255, .75); --ring: rgba(69, 36, 33, .5);
+}
+.soft:disabled { opacity: .4; }
+.mini {
+  width: 24px; height: 24px; border-radius: 50%; display: inline-grid; place-items: center;
+  font-size: 13px; color: rgba(69, 36, 33, .75); background: rgba(255, 255, 255, .85);
+  --ring: rgba(209, 51, 51, .5);
+}
+.mini:disabled { opacity: .35; }
+.link { padding: 3px 8px; border-radius: 999px; --ring: rgba(69, 36, 33, .3); }
+.link:active { background: rgba(69, 36, 33, .12); }
+
+/* ---------- main card ---------- */
+#app {
+  width: 100%; max-width: 336px; margin: 0 auto; padding: 18px 18px 22px;
+  min-height: 100%; display: flex; flex-direction: column; justify-content: center;
+}
+header { display: flex; align-items: center; gap: 8px; }
+header h1 { margin: 0; font-size: 17px; font-weight: 900; color: var(--deep); flex: 1; }
+#tomato { display: grid; place-items: center; margin-top: 14px; cursor: pointer; }
+#tomato .squish { transform-origin: 50% 100%; transition: transform .28s var(--spring); }
+#tomato .squish.on { transform: scale(1.12, .86); transition-duration: .1s; }
+#time { margin-top: 10px; text-align: center; font-size: 50px; font-weight: 800; line-height: 1.1; }
+#line {
+  height: 38px; display: flex; align-items: center; justify-content: center; text-align: center;
+  font-size: 13.5px; font-weight: 600; color: rgba(69, 36, 33, .6); transition: opacity .35s;
+}
+#line.fade { opacity: 0; }
+.controls { display: flex; justify-content: center; gap: 10px; margin-top: 8px; }
+.card { background: rgba(255, 255, 255, .65); border-radius: 14px; padding: 12px; }
+#harvest { margin-top: 16px; }
+.eyebrow { display: flex; justify-content: space-between; font-size: 11px; font-weight: 800; letter-spacing: 1.2px; color: rgba(69, 36, 33, .45); }
+.eyebrow span:last-child { letter-spacing: 0; font-weight: 700; }
+#basket { margin-top: 8px; min-height: 24px; display: flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: rgba(69, 36, 33, .6); }
+#basket b { font-size: 13px; color: var(--deep); }
+hr { border: 0; border-top: 1px solid rgba(69, 36, 33, .1); margin: 10px 0 6px; }
+#week { display: flex; align-items: flex-end; height: 50px; }
+#week div { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 9.5px; font-weight: 800; }
+#week .n { color: rgba(209, 51, 51, .7); min-height: 12px; }
+#week .bar { width: 11px; border-radius: 6px; background: rgba(69, 36, 33, .1); }
+#week .some .bar { background: linear-gradient(rgba(245, 92, 79, .45), rgba(209, 51, 51, .45)); }
+#week .today .bar { background: linear-gradient(var(--red), var(--deep)); }
+#week .d { font-weight: 600; color: rgba(69, 36, 33, .35); }
+#week .today .d { font-weight: 800; color: rgba(69, 36, 33, .7); }
+footer { margin-top: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; font-weight: 600; color: rgba(69, 36, 33, .45); }
+
+/* ---------- settings ---------- */
+#settings h2 { margin: 0; font-size: 17px; font-weight: 900; color: var(--deep); flex: 1; }
+#settings .card { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.row { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: rgba(69, 36, 33, .75); }
+.row > span:first-child { flex: 1; }
+.row .val { width: 64px; text-align: center; font-weight: 800; color: var(--ink); }
+.row .val.wide { width: 96px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.check { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 8px; border-radius: 999px; font-size: 13.5px; font-weight: 600; color: rgba(69, 36, 33, .75); text-align: left; --ring: rgba(69, 36, 33, .3); }
+.check:active { background: rgba(69, 36, 33, .08); }
+.check svg { font-size: 16px; color: rgba(69, 36, 33, .35); }
+.check.on svg { color: var(--leaf-dark); }
+.check small { display: block; font-size: 11.5px; font-weight: 600; color: rgba(69, 36, 33, .45); }
+#settings .card.checks { gap: 2px; padding: 8px 6px; }
+
+/* ---------- break screen ---------- */
+#break {
+  position: fixed; inset: 0; z-index: 10; overflow: auto;
+  background: linear-gradient(135deg, var(--mint), var(--peach));
+  color: var(--forest); display: flex; flex-direction: column; align-items: center;
+  animation: fadein .6s ease-out;
+}
+@keyframes fadein { from { opacity: 0; } }
+#bokeh { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.stage { position: relative; flex: 1; width: 100%; max-width: 760px; padding: 32px 20px 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.stage h2 { margin: 22px 0 0; font-size: clamp(28px, 6vw, 44px); font-weight: 900; line-height: 1.1; }
+.stage p { margin: 8px 0 0; font-size: clamp(15px, 2.6vw, 18px); font-weight: 600; opacity: .7; }
+.badge { margin-bottom: 16px; padding: 6px 14px; border-radius: 999px; background: rgba(64, 128, 77, .85); color: #fff; font-size: 12px; font-weight: 900; letter-spacing: 1.5px; }
+#restTime { margin-top: 14px; font-size: clamp(56px, 12vw, 84px); font-weight: 800; line-height: 1.1; }
+.calm { margin-top: 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 24px 40px; }
+.breath { position: relative; width: 150px; height: 150px; display: grid; place-items: center; font-size: 15px; font-weight: 700; }
+.breath::before, .breath i { content: ""; position: absolute; inset: 0; border-radius: 50%; background: rgba(102, 179, 102, .18); }
+.breath i { background: rgba(102, 179, 102, .35); transform: scale(.45); }
+.breath span { position: relative; opacity: .8; }
+.idea {
+  width: 300px; max-width: 100%; display: flex; align-items: center; gap: 14px; padding: 20px; border-radius: 20px;
+  background: rgba(255, 255, 255, .55); text-align: left; font-size: 17px; font-weight: 700; transition: opacity .4s;
+}
+.idea .e { font-size: 28px; width: 34px; text-align: center; }
+.idea.fade { opacity: 0; }
+.skip {
+  position: relative; margin: 0 0 40px; display: inline-flex; align-items: center; gap: 10px;
+  padding: 10px 16px; border-radius: 999px; background: rgba(255, 255, 255, .35);
+  color: rgba(43, 79, 59, .75); font-size: 13.5px; font-weight: 700; touch-action: none; transition: background .2s;
+}
+.skip.holding { background: rgba(255, 255, 255, .6); }
+.skip svg { width: 18px; height: 18px; transform: rotate(-90deg); }
+.skip circle { fill: none; stroke-width: 3; }
+.skip .track { stroke: rgba(43, 79, 59, .2); }
+.skip .fill { stroke: var(--forest); stroke-linecap: round; stroke-dasharray: 44; stroke-dashoffset: 44; transition: stroke-dashoffset .3s ease-out; }
+.skip.holding .fill { stroke-dashoffset: 0; transition: stroke-dashoffset 4s linear; }
+.after { margin-top: 30px; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.after .soft { color: var(--forest); --ring: rgba(43, 79, 59, .5); }
+
+/* ---------- mini timer (picture-in-picture) ---------- */
+#mini {
+  position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: linear-gradient(var(--cream), var(--blush));
+}
+#mini .num { margin-top: 2vh; font-size: min(19vw, 16vh); font-weight: 800; line-height: 1.1; }
+#mini .ml { max-width: 92%; font-size: 11.5px; font-weight: 600; color: rgba(69, 36, 33, .55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#mini .over { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; opacity: 0; transition: opacity .16s; }
+#mini:hover .over { opacity: 1; }
+#mini .art { transition: opacity .16s, filter .16s; }
+#mini:hover .art { opacity: .45; filter: blur(1.5px); }
+#mini .over button { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, .95); color: rgba(69, 36, 33, .8); font-size: 13px; box-shadow: 0 1px 3px rgba(209, 51, 51, .18); }
+#mini .over button:disabled { opacity: .4; }
+#mini.rest { background: linear-gradient(135deg, var(--mint), var(--peach)); color: var(--forest); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<main id="app">
+  <section id="home">
+    <header>
+      <h1>Tomatito</h1>
+      <button class="mini press" id="popOut" title="Mini timer that stays on top" aria-label="Mini timer that stays on top" hidden></button>
+      <button class="mini press" id="openSettings" title="Settings" aria-label="Settings"></button>
+    </header>
+    <div id="tomato" title="Poke"><div class="squish"></div></div>
+    <div id="time" class="num">25:00</div>
+    <div id="line"></div>
+    <div class="controls" id="focusControls">
+      <button class="soft press" id="reset" title="Reset" aria-label="Reset"></button>
+      <button class="pill press" id="toggle"></button>
+    </div>
+    <div class="controls" id="pendingControls" hidden>
+      <button class="pill green press" id="takeBreak"></button>
+    </div>
+    <div class="card" id="harvest">
+      <div class="eyebrow"><span>TODAY'S HARVEST</span><span id="minutes"></span></div>
+      <div id="basket"></div>
+      <hr>
+      <div id="week"></div>
+    </div>
+    <footer><span id="summary"></span></footer>
+  </section>
+
+  <section id="settings" hidden>
+    <header>
+      <button class="mini press" id="closeSettings" title="Back" aria-label="Back"></button>
+      <h2>Settings</h2>
+    </header>
+    <div class="card" id="steps"></div>
+    <div class="card">
+      <div class="row"><span>Chime</span>
+        <button class="mini press" data-chime="-1" aria-label="Previous chime"></button>
+        <span class="val wide" id="chimeName"></span>
+        <button class="mini press" data-chime="1" aria-label="Next chime"></button>
+      </div>
+      <div class="row" id="miniRow"><span>Mini timer size</span>
+        <button class="mini press" data-mini="-1" aria-label="Smaller"></button>
+        <span class="val wide" id="miniName"></span>
+        <button class="mini press" data-mini="1" aria-label="Bigger"></button>
+      </div>
+    </div>
+    <div class="card checks">
+      <button class="check press" id="notifyCheck"><span></span><span>Tell me when a tomato is ripe<small id="notifyNote"></small></span></button>
+    </div>
+    <footer><button class="link press" id="restore">Restore defaults</button><span>v1.0</span></footer>
+  </section>
+</main>
+
+<div id="break" hidden>
+  <canvas id="bokeh"></canvas>
+  <div class="stage" id="resting">
+    <div class="badge" id="longBadge" hidden></div>
+    <div id="restTomato"></div>
+    <h2 id="breakTitle"></h2>
+    <p id="breakSub"></p>
+    <div id="restTime" class="num"></div>
+    <div class="calm">
+      <div class="breath"><i></i><span id="breathWord">breathe in</span></div>
+      <div class="idea" id="idea"><span class="e"></span><span class="t"></span></div>
+    </div>
+  </div>
+  <button class="skip" id="skip">
+    <svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7"/><circle class="fill" cx="9" cy="9" r="7"/></svg>
+    <span>Hold to skip break</span>
+  </button>
+  <div class="stage" id="welcome" hidden>
+    <div id="welcomeTomato"></div>
+    <h2 id="welcomeTitle"></h2>
+    <p id="welcomeSub"></p>
+    <div class="after">
+      <button class="soft press" id="done">I'm done for now</button>
+      <button class="pill press" id="again"></button>
+    </div>
+  </div>
+</div>
+
+<div id="mini" hidden>
+  <div style="position:relative">
+    <div class="art" id="miniTomato"></div>
+    <div class="over">
+      <button id="miniToggle" title="Start or pause" aria-label="Start or pause"></button>
+      <button id="miniReset" title="Reset" aria-label="Reset"></button>
+    </div>
+  </div>
+  <div class="num" id="miniTime"></div>
+  <div class="ml" id="miniLine"></div>
+</div>
+
+<script src="lines.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

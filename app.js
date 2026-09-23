@@ -21,7 +21,7 @@ const store = {
 
 // ---------- settings ----------
 
-const DEFAULTS = { focusMinutes: 25, shortMinutes: 5, longMinutes: 15, longEvery: 4, chime: 'Glass', notify: true, miniSize: 1 };
+const DEFAULTS = { focusMinutes: 25, shortMinutes: 5, longMinutes: 15, longEvery: 4, chime: 'Glass', notify: true };
 const settings = Object.assign({}, DEFAULTS, store.get('settings', {}));
 const saveSettings = () => store.set('settings', settings);
 
@@ -286,7 +286,7 @@ function tick() {
   const now = Date.now();
   const gap = now - m.lastTick;
   m.lastTick = now;
-  // Hidden windows only get a tick about once a minute, so anything much longer is sleep.
+  // Ticks come every quarter second, so a gap this long means the computer slept.
   if (gap > 90_000) return handleGap();
   m.remaining = Math.max(0, (m.endAt - now) / 1000);
   m.lastRemaining = m.remaining;
@@ -486,6 +486,16 @@ function faceMarkup(mood, lw) {
   return s;
 }
 
+/** The red flesh: 0...1 progress mapped onto the visible body so "full" really looks full. */
+function wavePath(p, t) {
+  const level = p <= 0 ? 0 : p >= 1 ? 1 : 0.04 + p * 0.86;
+  const amp = level <= 0.001 || level >= 0.999 ? 0 : 2.5;
+  const y0 = 92 - level * 92;
+  let d = 'M0 92';
+  for (let x = 0; x <= 102; x += 2) d += `L${x} ${(y0 + Math.sin(x / 100 * Math.PI * 3 + t * 2.2) * amp).toFixed(2)}`;
+  return d + 'L100 92Z';
+}
+
 let tomatoId = 0;
 const liveTomatoes = new Set();
 
@@ -541,14 +551,7 @@ class Tomato {
   frame(t) {
     const still = !this.animated || reduced.matches;
     if (still) t = 0;
-    const p = this.progress;
-    // Map 0...1 onto the visible body so "full" really looks full.
-    const level = p <= 0 ? 0 : p >= 1 ? 1 : 0.04 + p * 0.86;
-    const amp = level <= 0.001 || level >= 0.999 ? 0 : 2.5;
-    const y0 = 92 - level * 92;
-    let d = 'M0 92';
-    for (let x = 0; x <= 102; x += 2) d += `L${x} ${(y0 + Math.sin(x / 100 * Math.PI * 3 + t * 2.2) * amp).toFixed(2)}`;
-    this.wave.setAttribute('d', d + 'L100 92Z');
+    this.wave.setAttribute('d', wavePath(this.progress, t));
 
     const sleepy = this.mood === 'sleepy' && !still;
     this.zzz.forEach((z, i) => {
@@ -573,32 +576,27 @@ const el = {
   toggle: $('toggle'), reset: $('reset'), takeBreak: $('takeBreak'),
   minutes: $('minutes'), basket: $('basket'), week: $('week'), summary: $('summary'),
   popOut: $('popOut'), openSettings: $('openSettings'),
-  steps: $('steps'), chimeName: $('chimeName'), miniName: $('miniName'), miniRow: $('miniRow'),
+  steps: $('steps'), chimeName: $('chimeName'),
   notifyCheck: $('notifyCheck'), notifyNote: $('notifyNote'), restore: $('restore'),
   brk: $('break'), bokeh: $('bokeh'), resting: $('resting'), welcome: $('welcome'), skip: $('skip'),
   longBadge: $('longBadge'), breakTitle: $('breakTitle'), breakSub: $('breakSub'), restTime: $('restTime'),
   breath: document.querySelector('.breath i'), breathWord: $('breathWord'), idea: $('idea'),
   welcomeTitle: $('welcomeTitle'), welcomeSub: $('welcomeSub'), done: $('done'), again: $('again'),
-  mini: $('mini'), miniTomato: $('miniTomato'), miniTime: $('miniTime'), miniLine: $('miniLine'),
-  miniToggle: $('miniToggle'), miniReset: $('miniReset'),
 };
 
 const bigTomato = new Tomato(el.tomato.firstElementChild, 290);
 const restTomato = new Tomato($('restTomato'), 170).set(1, 'sleepy');
 const welcomeTomato = new Tomato($('welcomeTomato'), 170).set(1, 'happy', true);
-const miniTomato = new Tomato(el.miniTomato, 100);
-miniTomato.svg.style.cssText += ';width:min(52vw,48vh);height:auto';
 
 el.openSettings.innerHTML = icon('gear') + '<span>Settings</span>';
 el.openHarvest.innerHTML = icon('chart') + '<span>Harvest</span><em class="num"></em>';
-el.popOut.innerHTML = icon('pip') + '<span>Keep a mini timer on top of your other windows</span>';
+el.popOut.innerHTML = icon('pip');
 document.querySelectorAll('[data-close]').forEach(b => { b.innerHTML = icon('close'); });
 el.reset.innerHTML = icon('reset');
 el.takeBreak.innerHTML = icon('leaf') + '<span></span>';
 el.again.innerHTML = icon('play') + 'Grow another tomato';
-el.miniReset.innerHTML = icon('reset');
-document.querySelectorAll('[data-chime="-1"], [data-mini="-1"]').forEach(b => { b.innerHTML = icon('back'); });
-document.querySelectorAll('[data-chime="1"], [data-mini="1"]').forEach(b => { b.innerHTML = icon('next'); });
+document.querySelectorAll('[data-chime="-1"]').forEach(b => { b.innerHTML = icon('back'); });
+document.querySelectorAll('[data-chime="1"]').forEach(b => { b.innerHTML = icon('next'); });
 
 // ---------- rendering ----------
 
@@ -625,7 +623,7 @@ function render() {
   renderCycle();
   document.title = m.running ? `${timeString()} · Tomatito` : 'Tomatito';
   renderBreak();
-  renderMini();
+  drawMini();
   renderHarvest();
 }
 
@@ -717,16 +715,6 @@ function renderBreak() {
   }
 }
 
-function renderMini() {
-  if (!pip) return;
-  const label = m.phase === 'breakPending' ? 'break!' : m.phase === 'restDone' ? 'done' : timeString();
-  miniTomato.set(progress(), mood(), m.running);
-  el.miniTime.textContent = label;
-  el.miniLine.textContent = m.line;
-  el.mini.classList.toggle('rest', m.phase === 'rest');
-  el.miniToggle.innerHTML = icon(m.phase === 'breakPending' ? 'leaf' : m.running ? 'pause' : 'play');
-  el.miniReset.disabled = m.phase === 'idle';
-}
 
 // ---------- settings panel ----------
 
@@ -736,7 +724,6 @@ const STEPS = [
   ['Long break', 'longMinutes', 'min', 5, 60],
   ['Long break after', 'longEvery', '🍅', 2, 8],
 ];
-const MINI_SIZES = [['Small', 170, 190], ['Medium', 210, 236], ['Large', 260, 300]];
 
 el.steps.innerHTML = STEPS.map(([label, key]) => `
   <div class="row"><span>${label}</span>
@@ -752,8 +739,6 @@ function renderSettings() {
     el.steps.querySelector(`[data-step="${key}"][data-by="1"]`).disabled = settings[key] >= hi;
   }
   el.chimeName.innerHTML = icon(settings.chime === 'Silent' ? 'mute' : 'sound') + settings.chime;
-  el.miniName.textContent = MINI_SIZES[settings.miniSize][0];
-  el.miniRow.hidden = !('documentPictureInPicture' in window);
   const supported = 'Notification' in window;
   const blocked = supported && Notification.permission === 'denied';
   const on = settings.notify && supported && !blocked;
@@ -783,12 +768,7 @@ document.querySelectorAll('[data-chime]').forEach(b => b.addEventListener('click
   playChime();  // hear what you picked
 }));
 
-document.querySelectorAll('[data-mini]').forEach(b => b.addEventListener('click', () => {
-  settings.miniSize = (settings.miniSize + Number(b.dataset.mini) + MINI_SIZES.length) % MINI_SIZES.length;
-  saveSettings();
-  renderSettings();
-  if (pip) pip.resizeTo?.(MINI_SIZES[settings.miniSize][1], MINI_SIZES[settings.miniSize][2]);
-}));
+
 
 el.notifyCheck.addEventListener('click', () => {
   if (!('Notification' in window) || Notification.permission === 'denied') return;
@@ -822,39 +802,191 @@ el.openSettings.addEventListener('click', () => showDrawer(el.settings));
 el.scrim.addEventListener('click', () => showDrawer(null));
 document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => showDrawer(null)));
 
-// ---------- mini timer: a picture-in-picture window that stays on top ----------
+// ---------- mini timer: a floating video, so it stays on top in every browser ----------
 
-let pip = null;
+// The timer is drawn onto a canvas that plays as a silent video; the browser's own
+// picture-in-picture window then floats it above every other app. Its play/pause
+// button starts and pauses the tomato.
+const MINI_W = 600, MINI_H = 480;
+const miniCanvas = document.createElement('canvas');
+miniCanvas.width = MINI_W;
+miniCanvas.height = MINI_H;
+const miniVideo = document.createElement('video');
+miniVideo.muted = true;
+miniVideo.playsInline = true;
+miniVideo.setAttribute('aria-hidden', 'true');
+miniVideo.style.cssText = 'position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:0;pointer-events:none';
 
-async function openMini() {
-  if (pip) return pip.focus();
-  const [, w, h] = MINI_SIZES[settings.miniSize];
-  try {
-    pip = await documentPictureInPicture.requestWindow({ width: w, height: h });
-  } catch { return; }
-  for (const s of document.querySelectorAll('style, link[rel="stylesheet"]')) pip.document.head.append(s.cloneNode(true));
-  pip.document.title = 'Tomatito';
-  pip.addEventListener('pointerdown', wakeAudio, true);
-  el.mini.hidden = false;
-  pip.document.body.append(el.mini);
-  pip.addEventListener('pagehide', () => {
-    el.mini.hidden = true;
-    document.body.append(el.mini);
-    pip = null;
-    startClock();
-  });
-  startClock();
-  render();
+const BODY_PATH = new Path2D(BODY);
+const CALYX_PATH = new Path2D(CALYX);
+const miniOn = () => document.pictureInPictureElement === miniVideo;
+
+function drawTomato2D(ctx, x, y, size, progress, mood) {
+  const oval = (cx, cy, rx, ry) => { ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.fill(); };
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(size / 100, size / 100);
+  ctx.fillStyle = 'rgb(255,232,224)';
+  ctx.fill(BODY_PATH);
+  ctx.save();
+  ctx.clip(BODY_PATH);
+  const flesh = ctx.createLinearGradient(0, 0, 0, 92);
+  flesh.addColorStop(0, 'rgb(245,92,79)');
+  flesh.addColorStop(1, 'rgb(209,51,51)');
+  ctx.fillStyle = flesh;
+  ctx.fill(new Path2D(wavePath(progress, 0)));
+  ctx.restore();
+  ctx.save();
+  ctx.translate(25, 33.12);
+  ctx.rotate(-35 * Math.PI / 180);
+  ctx.fillStyle = 'rgba(255,255,255,.45)';
+  oval(0, 0, 8, 4);
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(209,51,51,.9)';
+  ctx.lineWidth = 2.2;
+  ctx.stroke(BODY_PATH);
+
+  // The face, as in faceMarkup.
+  const ink = 'rgb(69,36,33)', eyeY = 51.52, er = 4.2, my = 59.34;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = ink;
+  for (const ex of [37, 63]) {
+    if (mood === 'awake') {
+      ctx.fillStyle = ink;
+      oval(ex, eyeY, er, er * 1.2);
+      ctx.fillStyle = '#fff';
+      oval(ex + er * 0.275, eyeY - er * 0.525, er * 0.425, er * 0.425);
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(ex - er * 1.3, eyeY);
+      ctx.quadraticCurveTo(ex, eyeY + (mood === 'sleepy' ? er * 1.3 : -er * 1.6), ex + er * 1.3, eyeY);
+      ctx.stroke();
+    }
+  }
+  ctx.fillStyle = 'rgba(255,128,153,.5)';
+  oval(25, my, 6, 3);
+  oval(75, my, 6, 3);
+  if (mood === 'sleepy') {
+    ctx.fillStyle = ink;
+    oval(50, my + 1.25, 1.5, 1.75);
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(45.5, my);
+    ctx.quadraticCurveTo(50, my + (mood === 'happy' ? 7.5 : 5), 54.5, my);
+    ctx.stroke();
+  }
+
+  ctx.save();
+  ctx.translate(52, 5.52);
+  ctx.rotate(14 * Math.PI / 180);
+  ctx.fillStyle = 'rgb(64,128,77)';
+  ctx.beginPath();
+  ctx.roundRect(-2.25, -6.5, 4.5, 13, 2.25);
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = 'rgb(102,179,102)';
+  ctx.fill(CALYX_PATH);
+  ctx.strokeStyle = 'rgb(64,128,77)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke(CALYX_PATH);
+  ctx.restore();
 }
 
-if ('documentPictureInPicture' in window) el.popOut.hidden = false;
-el.popOut.addEventListener('click', openMini);
-el.miniToggle.addEventListener('click', () => {
-  if (m.phase === 'breakPending') window.focus();
+/** Digits in fixed-width cells, so the countdown doesn't wobble as it ticks. */
+function drawClock(ctx, text, cx, baseline) {
+  const cell = ch => /\d/.test(ch) ? ctx.measureText('0').width : ctx.measureText(ch).width;
+  const width = [...text].reduce((w, ch) => w + cell(ch), 0);
+  let x = cx - width / 2;
+  ctx.textAlign = 'center';
+  for (const ch of text) {
+    const w = cell(ch);
+    ctx.fillText(ch, x + w / 2, baseline);
+    x += w;
+  }
+}
+
+/** Redraws only while the mini timer is showing, unless forced. */
+function drawMini(force = false) {
+  if (force !== true && !miniOn()) return;
+  const ctx = miniCanvas.getContext('2d');
+  const resting = m.phase === 'rest';
+  const bg = ctx.createLinearGradient(0, 0, resting ? MINI_W : 0, MINI_H);
+  bg.addColorStop(0, resting ? 'rgb(209,237,214)' : 'rgb(255,247,237)');
+  bg.addColorStop(1, resting ? 'rgb(252,227,214)' : 'rgb(255,237,230)');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, MINI_W, MINI_H);
+
+  drawTomato2D(ctx, MINI_W / 2 - 110, 26, 220, progress(), mood());
+
+  const ink = resting ? 'rgb(43,79,59)' : 'rgb(69,36,33)';
+  ctx.fillStyle = ink;
+  ctx.font = '800 138px Nunito, "Segoe UI", system-ui, sans-serif';
+  if (m.phase === 'breakPending') {
+    ctx.textAlign = 'center';
+    ctx.font = '800 96px Nunito, "Segoe UI", system-ui, sans-serif';
+    ctx.fillText('Break!', MINI_W / 2, 358);
+  } else {
+    drawClock(ctx, timeString(), MINI_W / 2, 368);
+  }
+
+  const note = m.phase === 'breakPending' ? 'Press play to start your break'
+    : m.phase === 'idle' || m.phase === 'restDone' ? 'Press play to start'
+    : !m.running ? 'Paused' : m.line;
+  ctx.font = '700 30px Nunito, "Segoe UI", system-ui, sans-serif';
+  ctx.globalAlpha = 0.6;
+  ctx.textAlign = 'center';
+  let line = note;
+  while (line.length > 1 && ctx.measureText(line).width > MINI_W - 60) line = line.slice(0, -2) + '…';
+  ctx.fillText(line, MINI_W / 2, 432);
+  ctx.globalAlpha = 1;
+
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = m.running ? 'playing' : 'paused';
+}
+
+async function openMini() {
+  if (miniOn()) return document.exitPictureInPicture().catch(() => {});
+  drawMini(true);
+  try {
+    if (miniVideo.paused) miniVideo.play().catch(() => {});
+    await miniVideo.requestPictureInPicture();
+    drawMini();
+  } catch (err) {
+    console.warn('Tomatito: mini timer unavailable', err);
+  }
+}
+
+// The floating window's play/pause button starts and pauses the tomato.
+let mediaPressed = 0;
+function miniPlayPause() {
+  mediaPressed = Date.now();
+  if (m.phase === 'rest') return;
   toggle();
+}
+miniVideo.addEventListener('pause', () => {
+  if (!miniOn()) return;
+  // Safari's floating window pauses the video itself rather than asking us.
+  if (Date.now() - mediaPressed > 500) miniPlayPause();
+  miniVideo.play().catch(() => {});
 });
-el.miniReset.addEventListener('click', reset);
-el.mini.addEventListener('dblclick', e => { if (!e.target.closest('button')) toggle(); });
+miniVideo.addEventListener('enterpictureinpicture', drawMini);
+
+if (document.pictureInPictureEnabled && miniCanvas.captureStream) {
+  miniVideo.srcObject = miniCanvas.captureStream();
+  document.body.append(miniVideo);
+  drawMini(true);
+  miniVideo.play().catch(() => {});
+  if ('mediaSession' in navigator) {
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({ title: 'Tomatito', artwork: [{ src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' }] });
+      navigator.mediaSession.setActionHandler('play', miniPlayPause);
+      navigator.mediaSession.setActionHandler('pause', miniPlayPause);
+    } catch {}
+  }
+  el.popOut.hidden = false;
+  document.fonts?.ready.then(() => drawMini(true));
+}
+el.popOut.addEventListener('click', openMini);
 
 // ---------- controls ----------
 
@@ -952,28 +1084,26 @@ function drawBreath(t) {
   el.breathWord.textContent = c < 4 ? 'breathe in' : 'breathe out';
 }
 
-// Frames and ticks come from whichever window is on screen: a minimised main window
-// is throttled hard, but the mini timer window keeps going.
-let frameToken = 0;
-function startFrames() {
-  const token = ++frameToken, win = pip || window;
-  const frame = now => {
-    if (token !== frameToken) return;
-    const t = reduced.matches ? 0 : (performance.timeOrigin + now) / 1000;
-    for (const tm of liveTomatoes) tm.frame(t);
-    if (!el.brk.hidden) { drawBokeh(el.bokeh, t); drawBreath(t); }
-    else if (win === window) drawBokeh(el.ambient, t, AMBIENT_COLORS, 0.09);
-    win.requestAnimationFrame(frame);
-  };
-  win.requestAnimationFrame(frame);
+function frame(now) {
+  const t = reduced.matches ? 0 : (performance.timeOrigin + now) / 1000;
+  for (const tm of liveTomatoes) tm.frame(t);
+  if (!el.brk.hidden) { drawBokeh(el.bokeh, t); drawBreath(t); }
+  else drawBokeh(el.ambient, t, AMBIENT_COLORS, 0.09);
+  requestAnimationFrame(frame);
 }
 
-let clock = null;
+/**
+ * The clock ticks from a tiny worker: browsers slow a hidden page's own timers to
+ * once a minute, which would freeze the mini timer while you work in another app.
+ */
 function startClock() {
-  try { if (clock) clock.win.clearInterval(clock.id); } catch {}
-  const win = pip || window;
-  clock = { win, id: win.setInterval(tick, 250) };
-  startFrames();
+  try {
+    const src = 'setInterval(() => postMessage(0), 250)';
+    new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' }))).onmessage = tick;
+  } catch {
+    setInterval(tick, 250);
+  }
+  requestAnimationFrame(frame);
 }
 
 // ---------- start up ----------

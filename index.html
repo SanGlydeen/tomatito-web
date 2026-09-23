@@ -121,18 +121,12 @@ svg.i { width: 1em; height: 1em; fill: currentColor; flex: none; }
 .dots b { position: relative; width: 15px; height: 15px; border-radius: 50%; overflow: hidden; background: rgba(69, 36, 33, .1); }
 .dots b.full { background: linear-gradient(var(--red), var(--deep)); }
 .dots b.now::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--p); background: linear-gradient(var(--red), var(--deep)); }
-.popout {
-  margin-top: 20px; display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px;
-  font-size: 13.5px; font-weight: 700; color: rgba(69, 36, 33, .55); --ring: rgba(69, 36, 33, .3);
-}
-.popout:hover { background: rgba(255, 255, 255, .7); color: rgba(69, 36, 33, .8); }
-.popout svg { font-size: 16px; }
 
 .bottom { display: flex; justify-content: space-between; gap: 16px; font-size: 12.5px; font-weight: 600; color: rgba(69, 36, 33, .45); }
 kbd { font: inherit; font-weight: 800; padding: 1px 7px; border-radius: 6px; background: rgba(255, 255, 255, .8); box-shadow: 0 1px 0 rgba(69, 36, 33, .15); color: rgba(69, 36, 33, .7); }
 
 @media (max-width: 560px) {
-  .tool > span, .keys, .popout { display: none; }
+  .tool > span, .keys { display: none; }
   .tool { padding: 10px; }
   .bottom { justify-content: center; }
 }
@@ -225,20 +219,6 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
 .after { margin-top: 30px; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
 .after .soft { color: var(--forest); --ring: rgba(43, 79, 59, .5); }
 
-/* ---------- mini timer (picture-in-picture) ---------- */
-#mini {
-  position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: linear-gradient(var(--cream), var(--blush));
-}
-#mini .num { margin-top: 2vh; font-size: min(19vw, 16vh); font-weight: 800; line-height: 1.1; }
-#mini .ml { max-width: 92%; font-size: 11.5px; font-weight: 600; color: rgba(69, 36, 33, .55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#mini .over { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; opacity: 0; transition: opacity .16s; }
-#mini:hover .over { opacity: 1; }
-#mini .art { transition: opacity .16s, filter .16s; }
-#mini:hover .art { opacity: .45; filter: blur(1.5px); }
-#mini .over button { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, .95); color: rgba(69, 36, 33, .8); font-size: 13px; box-shadow: 0 1px 3px rgba(209, 51, 51, .18); }
-#mini .over button:disabled { opacity: .4; }
-#mini.rest { background: linear-gradient(135deg, var(--mint), var(--peach)); color: var(--forest); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -262,12 +242,12 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
     <div class="controls" id="focusControls">
       <button class="soft round press" id="reset" title="Reset" aria-label="Reset"></button>
       <button class="pill big press" id="toggle"></button>
+      <button class="soft round press" id="popOut" title="Mini timer that floats on top of your other windows" aria-label="Mini timer that floats on top of your other windows" hidden></button>
     </div>
     <div class="controls" id="pendingControls" hidden>
       <button class="pill big green press" id="takeBreak"></button>
     </div>
     <div class="cycle" title="Every few tomatoes earn a longer break"><div class="dots" id="dots"></div><span id="cycleText"></span></div>
-    <button class="popout press" id="popOut" hidden></button>
   </main>
 
   <footer class="bottom">
@@ -312,11 +292,6 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
       <span class="val wide" id="chimeName"></span>
       <button class="mini press" data-chime="1" aria-label="Next chime"></button>
     </div>
-    <div class="row" id="miniRow"><span>Mini timer size</span>
-      <button class="mini press" data-mini="-1" aria-label="Smaller"></button>
-      <span class="val wide" id="miniName"></span>
-      <button class="mini press" data-mini="1" aria-label="Bigger"></button>
-    </div>
   </div>
   <div class="card checks">
     <button class="check press" id="notifyCheck"><span></span><span>Tell me when a tomato is ripe<small id="notifyNote"></small></span></button>
@@ -352,19 +327,7 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
   </div>
 </div>
 
-<div id="mini" hidden>
-  <div style="position:relative">
-    <div class="art" id="miniTomato"></div>
-    <div class="over">
-      <button id="miniToggle" title="Start or pause" aria-label="Start or pause"></button>
-      <button id="miniReset" title="Reset" aria-label="Reset"></button>
-    </div>
-  </div>
-  <div class="num" id="miniTime"></div>
-  <div class="ml" id="miniLine"></div>
-</div>
-
 <script src="lines.js?v=3"></script>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

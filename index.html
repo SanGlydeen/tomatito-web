@@ -91,6 +91,9 @@ svg.i { width: 1em; height: 1em; fill: currentColor; flex: none; }
 .top, .bottom { width: 100%; max-width: 1160px; margin: 0 auto; }
 .top { display: flex; align-items: center; gap: 10px; }
 .brand { flex: 1; font-size: 22px; font-weight: 900; color: var(--deep); }
+.brand a { color: inherit; text-decoration: none; border-radius: 8px; }
+.brand a:hover { opacity: .8; }
+.brand a:focus-visible { outline: 2px solid var(--deep); outline-offset: 3px; }
 .tool {
   display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 999px;
   background: rgba(255, 255, 255, .72); box-shadow: 0 2px 8px -2px rgba(209, 51, 51, .15);
@@ -283,7 +286,7 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
 <canvas id="ambient"></canvas>
 <div id="shell">
   <header class="top">
-    <div class="brand">Tomatito</div>
+    <div class="brand"><a href="https://tomatito.app/" target="_blank" rel="noopener" title="Tomatito homepage">Tomatito</a></div>
     <button class="tool press" id="openHarvest" title="Your harvest: today, this week and all time"></button>
     <button class="tool press" id="openSettings" title="Settings"></button>
   </header>

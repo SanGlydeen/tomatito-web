@@ -5,7 +5,7 @@ const LINES = {
     "Ready to grow a tomato?",
     "The soil is ready when you are.",
     "One tomato at a time. That's the whole trick.",
-    "Press start — future you says thanks.",
+    "Press start. Future you says thanks.",
     "Nothing grows while you scroll.",
     "Twenty-five minutes. You've got this.",
     "Let's put something in the basket.",
@@ -23,7 +23,7 @@ const LINES = {
     "First roots going down",
     "Tiny sprout, big plans",
     "We have germination 🌱",
-    "Settling in — no peeking at tabs",
+    "Settling in. No peeking at tabs",
     "The seed is in. Now we grow.",
     "Starting was the hard part. Done.",
     "Shoots and leaves incoming"
@@ -35,7 +35,7 @@ const LINES = {
     "Look at you, focusing",
     "Green shoots everywhere",
     "Momentum: acquired",
-    "Roots are holding — keep going",
+    "Roots are holding. Keep going",
     "This is the boring middle bit. It counts most.",
     "Photosynthesis in progress ☀️"
   ],
@@ -51,7 +51,7 @@ const LINES = {
     "Blushing already"
   ],
   "focus3": [
-    "Almost ripe — keep going",
+    "Almost ripe, keep going",
     "Nearly pickable",
     "The good part is close",
     "Don't look away now",
@@ -62,7 +62,7 @@ const LINES = {
   ],
   "focus4": [
     "So close! Finish strong 🍅",
-    "Final stretch — squeeze it out",
+    "Final stretch. Squeeze it out",
     "One last push, then rest",
     "Picking time in moments",
     "Stay. Right. Here.",
@@ -70,7 +70,7 @@ const LINES = {
     "Don't let it fall off the vine now"
   ],
   "paused": [
-    "Paused — your tomato is napping",
+    "Paused. Your tomato is napping",
     "On hold. The tomato waits patiently.",
     "Time stopped. Come back soon 🍅",
     "Paused. No judgement.",
@@ -80,7 +80,7 @@ const LINES = {
     "The garden's still here."
   ],
   "rest": [
-    "Break time — step away 🍃",
+    "Break time. Step away 🍃",
     "Off you go. Stretch something.",
     "Resting is part of the work.",
     "Let the eyes wander.",
@@ -94,7 +94,7 @@ const LINES = {
     "Round two whenever you like."
   ],
   "emptyHarvest": [
-    "Nothing picked yet — your first tomato awaits 🌱",
+    "Nothing picked yet. Your first tomato awaits 🌱",
     "Empty basket. Very fixable.",
     "The vine is bare. For now 🌱",
     "No tomatoes yet. One press changes that.",
@@ -115,7 +115,7 @@ const LINES = {
   ],
   "breakSubs": [
     "Time for a little break. The work will still be here.",
-    "Stand up — your spine has opinions.",
+    "Stand up. Your spine has opinions.",
     "Five minutes of nothing in particular.",
     "The work will keep. It always does.",
     "Let your eyes look at something far away.",
@@ -139,14 +139,14 @@ const LINES = {
   "welcomeFirst": [
     "One tomato harvested today. Nice start!",
     "First tomato of the day, picked.",
-    "One in the basket — usually the hardest one.",
+    "One in the basket, usually the hardest one.",
     "That's one. A fine beginning.",
     "One down. The vine is producing."
   ],
   "welcomeMore": [
     "%d tomatoes harvested today. You're on a roll!",
     "%d in the basket. Look at that little farm.",
-    "%d tomatoes down — momentum is real.",
+    "%d tomatoes down. Momentum is real.",
     "That's %d today. Quietly impressive.",
     "%d harvested. The garden thrives.",
     "%d tomatoes. Somebody's been busy 🍅"
@@ -162,7 +162,7 @@ const LINES = {
     ],
     [
       "👀",
-      "Look at something far away — 20 feet or more"
+      "Look at something far away, 20 feet or more"
     ],
     [
       "🙆",
@@ -215,7 +215,7 @@ const LINES = {
   ],
   "slept": [
     "Paused while your computer slept 😴",
-    "You were away — the tomato waited.",
+    "You were away, so the tomato waited.",
     "Welcome back. Paused where you left off.",
     "Time out. Nothing lost.",
     "Your computer napped, so the tomato did too."
@@ -229,11 +229,11 @@ const LINES = {
   "pending": [
     "A tomato is ready to be picked 🍅",
     "Break's waiting for you.",
-    "Tomato picked — take your break."
+    "Tomato picked. Take your break."
   ],
   "longBreakTitles": [
     "Four tomatoes! Take a proper break 🌿",
-    "A full basket — rest properly.",
+    "A full basket. Rest properly.",
     "Long break time 🌿",
     "That's a batch. Go do something else.",
     "Big break earned."
@@ -243,6 +243,6 @@ const LINES = {
     "Go outside if you can. The screen will wait.",
     "Eat something. Walk somewhere. Come back later.",
     "A proper rest, not a quick stretch.",
-    "You've earned a real pause — take all of it."
+    "You've earned a real pause. Take all of it."
   ]
 };

@@ -929,7 +929,8 @@ function flyToHarvest() {
   document.body.append(flyer);
   const [x0, y0] = [from.left + from.width / 2, from.top + from.height * 0.42];
   const [x1, y1] = [to.left + to.width / 2, to.top + to.height / 2];
-  const [cx, cy] = [(x0 + x1) / 2 + (x0 - x1) * 0.15, Math.min(y0, y1) - Math.max(80, Math.abs(x1 - x0) * 0.25)];
+  // Tossed up first, then over into the basket, never out of the window.
+  const [cx, cy] = [x0 + (x1 - x0) * 0.25, Math.max(size * 0.4, Math.min(y0, y1) - Math.max(80, Math.abs(x1 - x0) * 0.25))];
   const s0 = from.width * 0.42 / size, s1 = Math.max(to.width, to.height) * 1.3 / size;
   const spin = x1 > x0 ? 1 : -1;
   const frames = [];

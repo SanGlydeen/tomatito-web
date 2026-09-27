@@ -38,7 +38,14 @@
   --mint: rgb(209, 237, 214);
   --peach: rgb(252, 227, 214);
   --spring: cubic-bezier(.34, 1.7, .5, 1);
+  /* Real damped springs, sampled (the same ones the Mac and iPhone apps use). */
+  --press: linear(0, 0.101, 0.331, 0.596, 0.834, 1.01, 1.117, 1.16, 1.156, 1.125, 1.083, 1.041, 1.008, 0.986, 0.976, 0.974, 0.977, 0.984, 0.991, 0.997, 1.001, 1.003, 1.004, 1.004, 1.003, 1.002, 1.001, 1);
+  --pop: linear(0, 0.042, 0.149, 0.294, 0.453, 0.611, 0.754, 0.876, 0.973, 1.044, 1.091, 1.117, 1.126, 1.123, 1.11, 1.093, 1.073, 1.053, 1.034, 1.018, 1.005, 0.996, 0.989, 0.986, 0.984, 0.984, 0.986, 0.988, 0.99, 0.993, 0.995, 0.997, 0.999, 1, 1.001, 1.002, 1.002, 1.002, 1.002, 1.002, 1.001, 1.001, 1);
+  --settle: linear(0, 0.025, 0.086, 0.169, 0.263, 0.359, 0.452, 0.54, 0.619, 0.689, 0.75, 0.802, 0.846, 0.882, 0.912, 0.935, 0.954, 0.969, 0.98, 0.988, 0.994, 0.998, 1.001, 1.003, 1.004, 1.005, 1.005, 1.005, 1.005, 1.004, 1.004, 1.003, 1.003, 1.002, 1.002, 1.002, 1.001, 1.001, 1);
   color-scheme: light;
+}
+@supports not (transition-timing-function: linear(0, 1)) {
+  :root { --press: cubic-bezier(.34, 1.56, .64, 1); --pop: cubic-bezier(.34, 1.56, .64, 1); --settle: cubic-bezier(.2, .9, .3, 1); }
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
@@ -59,16 +66,32 @@ svg.i { width: 1em; height: 1em; fill: currentColor; flex: none; }
 [hidden] { display: none !important; }
 
 /* ---------- press feedback: squish while held, springy pop and a ripple on release ---------- */
-.press { position: relative; transition: transform .22s var(--spring), filter .15s, box-shadow .15s; }
-.press:not(:disabled):active { transform: scale(.88); filter: brightness(.93); transition-duration: .08s; }
+.press { position: relative; transition: transform .46s var(--press), filter .15s, box-shadow .15s, opacity .25s; }
+.press:not(:disabled):active { transform: scale(.88); filter: brightness(.93); transition-duration: .08s; transition-timing-function: ease-out; }
 .press::after {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   border: 2px solid var(--ring, var(--red)); opacity: 0;
 }
-.press.pop { animation: pop .3s var(--spring); }
+/* Released: spring back from the squish, overshooting a touch, even after the quickest click. */
+.press.pop { animation: pop .46s var(--press); }
 .press.pop::after { animation: ripple .45s ease-out; }
-@keyframes pop { 40% { transform: scale(1.07); } }
+@keyframes pop { from { transform: scale(.9); } }
 @keyframes ripple { from { inset: 0; opacity: .7; } to { inset: -7px; opacity: 0; } }
+
+/* Icons that change (play and pause) turn into each other instead of blinking. */
+.ico { display: inline-grid; place-items: center; width: 1em; height: 1em; flex: none; }
+.ico > svg { grid-area: 1 / 1; transition: transform .5s var(--pop), opacity .18s; }
+.ico > svg.off { opacity: 0; transform: scale(.3) rotate(-60deg); transition-timing-function: ease-in; transition-duration: .18s; }
+.lbl { display: inline-block; }
+
+/* Counting digits roll, in the direction time is going. */
+.roll { display: inline-block; position: relative; }
+.roll > span, .roll > i { display: inline-block; }
+.roll > i { position: absolute; left: 0; top: 0; font-style: normal; pointer-events: none; }
+
+/* Anything that moves on its own leaves its own layer. */
+.flyer { position: fixed; left: 0; top: 0; z-index: 30; pointer-events: none; will-change: transform; }
+.flyer svg { overflow: visible; }
 
 .pill {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -119,15 +142,14 @@ svg.i { width: 1em; height: 1em; fill: currentColor; flex: none; }
 #tomato::after {
   content: ""; position: absolute; z-index: -1; left: 16%; right: 16%; bottom: -16px; height: 22px;
   border-radius: 50%; background: radial-gradient(closest-side, rgba(209, 51, 51, .2), transparent);
+  /* The shadow shrinks and fades as the tomato leaves the ground. */
+  transform: scale(calc(1 - var(--air, 0) * .4)); opacity: calc(1 - var(--air, 0) * .7);
 }
-#tomato .squish { transform-origin: 50% 100%; transition: transform .28s var(--spring); }
-#tomato .squish.on { transform: scale(1.12, .86); transition-duration: .1s; }
 #time { margin-top: clamp(16px, 3vh, 30px); font-size: clamp(64px, min(12vw, 15vh), 132px); font-weight: 800; line-height: 1; letter-spacing: -.02em; }
 #line {
   min-height: 2.9em; max-width: 440px; margin-top: 8px; display: flex; align-items: center; justify-content: center;
-  font-size: clamp(15px, 1.5vw, 18px); font-weight: 600; color: rgba(69, 36, 33, .6); transition: opacity .35s;
+  font-size: clamp(15px, 1.5vw, 18px); font-weight: 600; color: rgba(69, 36, 33, .6);
 }
-#line.fade { opacity: 0; }
 .controls { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 10px; }
 .pill.big { min-width: 220px; padding: 16px 34px; font-size: 18px; box-shadow: 0 8px 20px -6px rgba(209, 51, 51, .55); }
 .pill.big.green { box-shadow: 0 8px 20px -6px rgba(64, 128, 77, .55); }
@@ -136,10 +158,21 @@ svg.i { width: 1em; height: 1em; fill: currentColor; flex: none; }
 .dots { display: flex; gap: 9px; }
 .dots b { position: relative; width: 15px; height: 15px; border-radius: 50%; overflow: hidden; background: rgba(69, 36, 33, .1); }
 .dots b.full { background: linear-gradient(var(--red), var(--deep)); }
-.dots b.now::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--p); background: linear-gradient(var(--red), var(--deep)); }
+.dots b.now::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--p); background: linear-gradient(var(--red), var(--deep)); transition: height .9s var(--settle); }
+.dots > * { transition: opacity .4s; }
+/* A tomato joins the set with a pop; a finished set does a little wave. */
+.dots .picked { animation: picked .7s var(--pop); }
+.dots .cheer { animation: cheer .6s cubic-bezier(.3, 0, .3, 1) both; animation-delay: calc(var(--i) * 80ms + 150ms); }
+@keyframes picked { from { transform: scale(1.6); } }
+@keyframes cheer { 40% { transform: translateY(-9px) scale(1.12); } 70% { transform: translateY(1px) scale(.96, 1.04); } }
 
 .bottom { display: flex; justify-content: space-between; gap: 16px; font-size: 12.5px; font-weight: 600; color: rgba(69, 36, 33, .45); }
 kbd { font: inherit; font-weight: 800; padding: 1px 7px; border-radius: 6px; background: rgba(255, 255, 255, .8); box-shadow: 0 1px 0 rgba(69, 36, 33, .15); color: rgba(69, 36, 33, .7); }
+
+/* Opening the app: the tomato drops in and everything settles around it. */
+.arrive .top, .arrive .bottom, .arrive .actions { animation: fade .9s ease-out both; animation-delay: .45s; }
+.arrive .room > :not(#tomato) { animation: rise .9s var(--settle) both; animation-delay: calc(var(--i, 0) * 70ms + 260ms); }
+@keyframes fade { from { opacity: 0; } }
 
 
 /* ---------- side drawers: harvest and settings ---------- */
@@ -152,15 +185,20 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
   transform: translateX(105%); visibility: hidden;
   transition: transform .32s cubic-bezier(.2, .9, .3, 1), visibility 0s .32s;
 }
-.drawer.open { transform: none; visibility: visible; transition: transform .32s cubic-bezier(.2, .9, .3, 1); }
+.drawer.open { transform: none; visibility: visible; transition: transform .5s var(--settle); }
+.drawer.dragging { transition: none; }
+/* What's inside follows the drawer in, a beat behind, one card after another. */
+.drawer.open > * { animation: rise .55s var(--settle) both; animation-delay: calc(var(--i, 0) * 45ms + 60ms); }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+.grab { display: none; }
 .drawer header { display: flex; align-items: center; gap: 8px; }
 .drawer h2 { margin: 0; flex: 1; font-size: 20px; font-weight: 900; color: var(--deep); }
 .drawer .card { margin-top: 14px; display: flex; flex-direction: column; gap: 12px; padding: 16px; background: rgba(255, 255, 255, .72); border-radius: 18px; }
 .drawer .mini { width: 28px; height: 28px; font-size: 15px; }
 .drawer footer { margin-top: 14px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; color: rgba(69, 36, 33, .45); }
 
-.eyebrow { display: flex; justify-content: space-between; font-size: 11px; font-weight: 800; letter-spacing: 1.3px; color: rgba(69, 36, 33, .45); }
-.eyebrow span:last-child { letter-spacing: 0; font-weight: 700; font-size: 12px; }
+.eyebrow { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; font-weight: 800; color: rgba(69, 36, 33, .55); }
+.eyebrow span:last-child { font-weight: 700; font-size: 12.5px; color: rgba(69, 36, 33, .45); }
 .big-stat { display: flex; align-items: baseline; gap: 8px; margin-top: -4px; }
 .big-stat b { font-size: 46px; font-weight: 900; line-height: 1; color: var(--deep); }
 .big-stat span { font-size: 16px; font-weight: 700; color: rgba(69, 36, 33, .55); }
@@ -169,7 +207,12 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
 #week { display: flex; align-items: flex-end; height: 112px; }
 #week div { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 11px; font-weight: 800; }
 #week .n { color: rgba(209, 51, 51, .75); min-height: 14px; }
-#week .bar { width: 22px; border-radius: 8px; background: rgba(69, 36, 33, .08); }
+#week .bar { width: 22px; border-radius: 8px; background: rgba(69, 36, 33, .08); transform-origin: 50% 100%; transition: height .6s var(--pop); }
+/* Opening the harvest grows the week, left to right. */
+.grow #week .bar { animation: grow .8s var(--pop) both; animation-delay: calc(var(--i) * 55ms + 120ms); }
+.grow #week .n { animation: rise .5s var(--settle) both; animation-delay: calc(var(--i) * 55ms + 320ms); }
+.grow #basket > * { animation: picked .6s var(--pop) both; animation-delay: calc(var(--i) * 45ms + 150ms); }
+@keyframes grow { from { transform: scaleY(0); } }
 #week .some .bar { background: linear-gradient(rgba(245, 92, 79, .5), rgba(209, 51, 51, .5)); }
 #week .today .bar { background: linear-gradient(var(--red), var(--deep)); }
 #week .d { font-weight: 600; color: rgba(69, 36, 33, .4); }
@@ -177,7 +220,7 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .drawer .stats .card { margin-top: 14px; gap: 2px; padding: 14px 6px; text-align: center; }
 .stats b { font-size: 26px; font-weight: 900; line-height: 1.1; }
-.stats span { font-size: 10.5px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: rgba(69, 36, 33, .45); }
+.stats span { font-size: 12.5px; font-weight: 700; color: rgba(69, 36, 33, .5); }
 
 .row { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 600; color: rgba(69, 36, 33, .75); }
 .row > span:first-child { flex: 1; }
@@ -185,8 +228,8 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
 .row .val.wide { width: 100px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
 .check { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; border-radius: 14px; font-size: 14.5px; font-weight: 600; color: rgba(69, 36, 33, .75); text-align: left; --ring: rgba(69, 36, 33, .3); }
 .check:active { background: rgba(69, 36, 33, .08); }
-.check > span:first-child svg { font-size: 18px; color: rgba(69, 36, 33, .35); }
-.check.on > span:first-child svg { color: var(--leaf-dark); }
+.check > .ico { font-size: 18px; color: rgba(69, 36, 33, .35); }
+.check.on > .ico { color: var(--leaf-dark); }
 .check small { display: block; font-size: 12px; font-weight: 600; color: rgba(69, 36, 33, .45); }
 .drawer .card.checks { padding: 8px 6px; }
 .explain { margin: 0; font-size: 12.5px; font-weight: 600; line-height: 1.45; color: rgba(69, 36, 33, .5); }
@@ -242,7 +285,10 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
     top: auto; left: 0; width: 100%; max-height: 92%; border-radius: 22px 22px 0 0;
     padding-bottom: calc(22px + env(safe-area-inset-bottom)); transform: translateY(105%);
   }
-  .drawer::before { content: ""; display: block; width: 40px; height: 5px; margin: -10px auto 12px; border-radius: 3px; background: rgba(69, 36, 33, .2); }
+  /* Pull the sheet down by its handle or title to put it away. */
+  .grab { display: block; height: 30px; margin: -22px -20px 0; touch-action: none; cursor: grab; }
+  .grab::before { content: ""; display: block; width: 40px; height: 5px; margin: 12px auto 0; border-radius: 3px; background: rgba(69, 36, 33, .2); }
+  .drawer header { touch-action: none; }
 }
 
 /* ---------- break screen ---------- */
@@ -250,14 +296,18 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
   position: fixed; inset: 0; z-index: 10; overflow: auto;
   background: linear-gradient(135deg, var(--mint), var(--peach));
   color: var(--forest); display: flex; flex-direction: column; align-items: center;
-  animation: fadein .6s ease-out;
 }
-@keyframes fadein { from { opacity: 0; } }
+/* The break arrives in a cascade: the tomato first, then the words, then the calm. */
+.enter > * { animation: rise .8s var(--settle) both; animation-delay: calc(var(--i, 0) * 70ms + 180ms); }
+#break.enter-skip .skip { animation: rise .8s var(--settle) both; animation-delay: .7s; }
+.enter > .badge { animation-name: pop-in; }
+.enter > #restTomato, .enter > #welcomeTomato { animation: fade .5s ease-out both; }
+@keyframes pop-in { from { opacity: 0; transform: scale(.6); } }
 #bokeh { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .stage { position: relative; flex: 1; width: 100%; max-width: 760px; padding: 32px 20px 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .stage h2 { margin: 22px 0 0; font-size: clamp(28px, 6vw, 44px); font-weight: 900; line-height: 1.1; }
 .stage p { margin: 8px 0 0; font-size: clamp(15px, 2.6vw, 18px); font-weight: 600; opacity: .7; }
-.badge { margin-bottom: 16px; padding: 6px 14px; border-radius: 999px; background: rgba(64, 128, 77, .85); color: #fff; font-size: 12px; font-weight: 900; letter-spacing: 1.5px; }
+.badge { margin-bottom: 16px; padding: 6px 14px; border-radius: 999px; background: rgba(64, 128, 77, .85); color: #fff; font-size: 14px; font-weight: 800; }
 #restTime { margin-top: 14px; font-size: clamp(56px, 12vw, 84px); font-weight: 800; line-height: 1.1; }
 .calm { margin-top: 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 24px 40px; }
 .breath { position: relative; width: 150px; height: 150px; display: grid; place-items: center; font-size: 15px; font-weight: 700; }
@@ -270,17 +320,33 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
 }
 .idea .e { font-size: 28px; width: 34px; text-align: center; }
 .idea.fade { opacity: 0; }
+/* Holding to skip fills the button with juice, like the tomato; letting go drains it. */
 .skip {
-  position: relative; margin: 0 0 40px; display: inline-flex; align-items: center; gap: 10px;
-  padding: 10px 16px; border-radius: 999px; background: rgba(255, 255, 255, .35);
-  color: rgba(43, 79, 59, .75); font-size: 13.5px; font-weight: 700; touch-action: none; transition: background .2s;
+  position: relative; margin: 0 0 40px; border-radius: 999px; overflow: hidden; isolation: isolate;
+  background: rgba(255, 255, 255, .35); color: rgba(43, 79, 59, .75); font-size: 13.5px; font-weight: 700;
+  touch-action: none; transition: background .2s, transform .46s var(--press);
 }
 .skip.holding { background: rgba(255, 255, 255, .6); }
+.skip-row { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 16px; white-space: nowrap; }
 .skip svg { width: 18px; height: 18px; transform: rotate(-90deg); }
 .skip circle { fill: none; stroke-width: 3; }
 .skip .track { stroke: rgba(43, 79, 59, .2); }
-.skip .fill { stroke: var(--forest); stroke-linecap: round; stroke-dasharray: 44; stroke-dashoffset: 44; transition: stroke-dashoffset .3s ease-out; }
+.skip .fill { stroke: var(--forest); stroke-linecap: round; stroke-dasharray: 44; stroke-dashoffset: 44; transition: stroke-dashoffset .5s var(--settle); }
 .skip.holding .fill { stroke-dashoffset: 0; transition: stroke-dashoffset 4s linear; }
+/* Parked just below the button, crest and all, until you hold it. */
+.skip .juice { position: absolute; inset: 0; transform: translateY(calc(100% + 8px)); transition: transform .6s var(--settle); }
+.skip .juice::before {
+  content: ""; position: absolute; left: 0; right: 0; top: -6px; height: 7px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4Q10 0 20 4T40 4V8H0Z' fill='rgb(102,179,102)'/%3E%3C/svg%3E") repeat-x 0 0 / 40px 7px;
+  animation: surf 1.1s linear infinite;
+}
+.skip .juice > div { position: absolute; inset: 0; overflow: hidden; background: linear-gradient(var(--leaf), var(--leaf-dark)); }
+.skip .juice .skip-row { position: absolute; inset: 0; color: #fff; transform: translateY(calc(-100% - 8px)); transition: transform .6s var(--settle); }
+.skip .juice .track { stroke: rgba(255, 255, 255, .35); }
+.skip .juice .fill { stroke: #fff; }
+.skip.holding .juice, .skip.holding .juice .skip-row { transform: none; transition: transform 4s linear; }
+.skip.done { transform: scale(1.06); }
+@keyframes surf { to { background-position-x: 40px; } }
 .after { margin-top: 30px; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
 .after .soft { color: var(--forest); --ring: rgba(43, 79, 59, .5); }
 
@@ -301,7 +367,7 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
   </header>
 
   <main class="room">
-    <div class="badge phone-only" id="longChip" hidden>LONG BREAK</div>
+    <div class="badge phone-only" id="longChip" hidden>Long break</div>
     <div id="tomato"><div class="squish"></div></div>
     <div id="time" class="num">25:00</div>
     <div id="line"></div>
@@ -327,7 +393,7 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
   </div>
 
   <footer class="bottom">
-    <span class="keys"><kbd>Space</kbd> start / pause &nbsp;·&nbsp; <kbd>R</kbd> reset</span>
+    <span class="keys"><kbd>Space</kbd> start or pause, <kbd>R</kbd> reset</span>
     <span id="summary"></span>
   </footer>
 </div>
@@ -335,17 +401,18 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
 <div id="scrim"></div>
 
 <aside class="drawer" id="harvest" aria-label="Your harvest">
+  <div class="grab" aria-hidden="true"></div>
   <header>
     <h2>Your harvest</h2>
     <button class="mini press" data-close title="Close" aria-label="Close"></button>
   </header>
   <div class="card">
-    <div class="eyebrow"><span>TODAY</span><span id="minutes"></span></div>
+    <div class="eyebrow"><span>Today</span><span id="minutes"></span></div>
     <div class="big-stat"><b class="num" id="todayNum">0</b><span id="todayWord">tomatoes</span></div>
     <div id="basket"></div>
   </div>
   <div class="card">
-    <div class="eyebrow"><span>THE LAST 7 DAYS</span></div>
+    <div class="eyebrow"><span>The last 7 days</span></div>
     <div id="week"></div>
   </div>
   <div class="stats">
@@ -357,6 +424,7 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
 </aside>
 
 <aside class="drawer" id="settings" aria-label="Settings">
+  <div class="grab" aria-hidden="true"></div>
   <header>
     <h2>Settings</h2>
     <button class="mini press" data-close title="Close" aria-label="Close"></button>
@@ -389,8 +457,8 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
     </div>
   </div>
   <button class="skip" id="skip">
-    <svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7"/><circle class="fill" cx="9" cy="9" r="7"/></svg>
-    <span>Hold to skip break</span>
+    <span class="skip-row"><svg viewBox="0 0 18 18" aria-hidden="true"><circle class="track" cx="9" cy="9" r="7"/><circle class="fill" cx="9" cy="9" r="7"/></svg><span class="skip-text">Hold to skip break</span></span>
+    <span class="juice" aria-hidden="true"><div><span class="skip-row"><svg viewBox="0 0 18 18"><circle class="track" cx="9" cy="9" r="7"/><circle class="fill" cx="9" cy="9" r="7"/></svg><span class="skip-text">Hold to skip break</span></span></div></span>
   </button>
   <div class="stage" id="welcome" hidden>
     <div id="welcomeTomato"></div>

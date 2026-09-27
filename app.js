@@ -5,6 +5,11 @@
 const FAST = new URLSearchParams(location.search).has('fast');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 
+// The stylesheet's springs, for animations started from here.
+const rootStyle = getComputedStyle(document.documentElement);
+const POP = rootStyle.getPropertyValue('--pop').trim() || 'cubic-bezier(.34, 1.56, .64, 1)';
+const SETTLE = rootStyle.getPropertyValue('--settle').trim() || 'cubic-bezier(.2, .9, .3, 1)';
+
 // ---------- storage ----------
 
 const store = {
@@ -335,9 +340,9 @@ function finishFocus() {
 
   const title = m.isLongBreak ? 'Four tomatoes! Long break time 🌿' : 'Your tomato is ripe! 🍅';
   if (document.visibilityState === 'visible') {
-    // In view: the break simply begins, just like on the Mac.
+    // In view: the tomato is picked, then the break begins by itself, just like on the Mac.
     if (!document.hasFocus()) notify(title, `Time for a ${breakLengthLabel()} break.`);
-    beginRest();
+    celebrate(beginRest);
   } else {
     // Out of sight: wait, so the break isn't spent before it's seen.
     notify(title, 'Click here to start your break.', true);
@@ -361,13 +366,28 @@ function finishRest() {
 }
 
 // Coming back to a waiting break starts it; that's what the notification click does too.
-addEventListener('focus', () => { if (m.phase === 'breakPending') beginRest(); });
+addEventListener('focus', () => { if (m.phase === 'breakPending' && !celebrating) beginRest(); });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   tick();
   renderHarvest();
-  if (m.phase === 'breakPending') beginRest();
+  if (m.phase === 'breakPending' && !celebrating) beginRest();
 });
+
+let celebrating = false;
+/** A ripe tomato hops for joy and a little one flies into the harvest. Then the break blooms out of it. */
+function celebrate(then) {
+  if (reduced.matches) return then();
+  celebrating = true;
+  badgeHeld = todayCount() - 1;  // the new tomato isn't in the basket until it lands there
+  render();
+  bigTomato.hop(0.16);
+  setTimeout(flyToHarvest, 330);
+  setTimeout(() => {
+    celebrating = false;
+    if (m.phase === 'breakPending') then(); else render();
+  }, 1350);
+}
 
 // ---------- saving & restoring a session ----------
 
@@ -469,34 +489,46 @@ const CALYX = (() => {
 
 const INK = 'rgb(69,36,33)';
 
-function faceMarkup(mood, lw) {
-  const eyeY = 51.52, er = 4.2;
-  let s = '';
-  for (const x of [37, 63]) {
-    if (mood === 'awake') {
-      s += `<ellipse cx="${x}" cy="${eyeY}" rx="${er}" ry="${er * 1.2}" fill="${INK}"/>`;
-      s += `<circle cx="${x + er * 0.275}" cy="${eyeY - er * 0.525}" r="${er * 0.425}" fill="#fff"/>`;
-    } else {
-      const dy = mood === 'sleepy' ? er * 1.3 : -er * 1.6;
-      s += `<path d="M${x - er * 1.3} ${eyeY}Q${x} ${eyeY + dy} ${x + er * 1.3} ${eyeY}" fill="none" stroke="${INK}" stroke-width="${lw}" stroke-linecap="round"/>`;
-    }
-  }
-  const my = 59.34;
-  for (const x of [25, 75]) s += `<ellipse cx="${x}" cy="${my}" rx="6" ry="3" fill="rgb(255,128,153)" opacity=".5"/>`;
-  s += mood === 'sleepy'
-    ? `<ellipse cx="50" cy="${my + 1.25}" rx="1.5" ry="1.75" fill="${INK}"/>`
-    : `<path d="M45.5 ${my}Q50 ${my + (mood === 'happy' ? 7.5 : 5)} 54.5 ${my}" fill="none" stroke="${INK}" stroke-width="${lw}" stroke-linecap="round"/>`;
-  return s;
-}
+/** Where the juice sits for 0...1 progress, mapped onto the visible body so "full" really looks full. */
+const juiceLevel = p => p <= 0 ? 0 : p >= 1 ? 1 : 0.04 + p * 0.86;
 
-/** The red flesh: 0...1 progress mapped onto the visible body so "full" really looks full. */
-function wavePath(p, t) {
-  const level = p <= 0 ? 0 : p >= 1 ? 1 : 0.04 + p * 0.86;
-  const amp = level <= 0.001 || level >= 0.999 ? 0 : 2.5;
+/** The juice's surface: a gentle ripple, tipped over while it sloshes. */
+function wavePath(level, t, tilt = 0, amp = 2.5) {
+  const a = level <= 0.001 || level >= 0.999 ? 0 : amp;
+  // Nearly full or nearly empty, there's no room left to slosh.
+  const slope = Math.tan(tilt) * Math.min(1, 5 * level * (1 - level));
   const y0 = 92 - level * 92;
   let d = 'M0 92';
-  for (let x = 0; x <= 102; x += 2) d += `L${x} ${(y0 + Math.sin(x / 100 * Math.PI * 3 + t * 2.2) * amp).toFixed(2)}`;
+  for (let x = 0; x <= 102; x += 2) d += `L${x} ${(y0 + slope * (x - 50) + Math.sin(x / 100 * Math.PI * 3 + t * 2.2) * a).toFixed(2)}`;
   return d + 'L100 92Z';
+}
+
+// The tomato is a small physical thing. Its juice, its jelly body and its gaze are springs,
+// [stiffness, damping], stepped every frame, so anything can nudge them and they settle naturally.
+const SPRINGS = {
+  level: [34, 8.2],   // the juice pours in and settles with a little overshoot
+  tilt: [62, 1.9],    // and sloshes from side to side a few times
+  jelly: [210, 6],    // the body wobbles like jelly
+  look: [140, 22],    // the eyes glide to what they're looking at
+};
+const GRAVITY = 9;    // tomato heights per second squared, for hops
+
+const ARC = { happy: -1.6, sleepy: 1.3 };  // how closed eyes curve, in eye radii
+const MOUTH = { awake: [4.5, 5, 0], happy: [4.5, 7.5, 0], sleepy: [0, 0, 1] };  // smile half-width, smile depth, "o"
+const smooth = u => u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u);
+
+/** The eyes partway through a change of mood. A change always happens behind a blink:
+ *  the old eyes close, then the new ones open. */
+function eyesAt(from, to, k) {
+  const a = ARC[from], b = ARC[to];
+  if (from === to) k = 1;
+  if (from !== 'awake' && to !== 'awake') return { open: false, arc: a + (b - a) * smooth(k) };
+  if (k < 0.45) {
+    const u = smooth(k / 0.45);
+    return from === 'awake' ? { open: true, lid: 1 - 0.92 * u } : { open: false, arc: a * (1 - u) };
+  }
+  const u = smooth((k - 0.45) / 0.55);
+  return to === 'awake' ? { open: true, lid: 0.08 + 0.92 * u } : { open: false, arc: b * u };
 }
 
 let tomatoId = 0;
@@ -504,13 +536,13 @@ const liveTomatoes = new Set();
 
 class Tomato {
   constructor(host, size, { animated = true } = {}) {
-    const id = ++tomatoId, k = 100 / size;
+    const id = ++tomatoId, k = 100 / size, lw = Math.max(1, size * 0.02) * k;
+    this.host = host;
     this.size = size;
     this.animated = animated;
     this.progress = 0;
-    this.mood = '';
+    this.mood = 'awake';
     this.bob = false;
-    this.lw = Math.max(1, size * 0.02) * k;
     host.innerHTML = `
       <svg viewBox="0 0 100 92" width="${size}" height="${size * 0.92}" style="overflow:visible;display:block" aria-hidden="true">
         <defs>
@@ -519,12 +551,23 @@ class Tomato {
             <stop offset="0" stop-color="rgb(245,92,79)"/><stop offset="1" stop-color="rgb(209,51,51)"/>
           </linearGradient>
         </defs>
-        <g class="bob">
+        <g class="body">
           <path d="${BODY}" fill="rgb(255,232,224)"/>
           <path class="wave" clip-path="url(#tc${id})" fill="url(#tg${id})"/>
           <ellipse cx="25" cy="33.12" rx="8" ry="4" fill="#fff" opacity=".45" transform="rotate(-35 25 33.12)"/>
           <path d="${BODY}" fill="none" stroke="rgb(209,51,51)" stroke-opacity=".9" stroke-width="${Math.max(1, size * 0.022) * k}"/>
-          <g class="face"></g>
+          <g class="face">
+            <ellipse cx="25" cy="59.34" rx="6" ry="3" fill="rgb(255,128,153)" opacity=".5"/>
+            <ellipse cx="75" cy="59.34" rx="6" ry="3" fill="rgb(255,128,153)" opacity=".5"/>
+            <path class="smile" fill="none" stroke="${INK}" stroke-width="${lw}" stroke-linecap="round"/>
+            <ellipse class="o" cx="50" cy="60.59" rx="1.5" ry="1.75" fill="${INK}"/>
+            <g class="eyes">${[37, 63].map(x => `
+              <g transform="translate(${x} 51.52)">
+                <g class="open"><ellipse rx="4.2" ry="5.04" fill="${INK}"/><circle cx="1.155" cy="-2.205" r="1.785" fill="#fff"/></g>
+                <path class="arc" fill="none" stroke="${INK}" stroke-width="${lw}" stroke-linecap="round"/>
+              </g>`).join('')}
+            </g>
+          </g>
           <rect x="49.75" y="-0.98" width="4.5" height="13" rx="2.25" fill="rgb(64,128,77)" transform="rotate(14 52 5.52)"/>
           <path d="${CALYX}" fill="rgb(102,179,102)" stroke="rgb(64,128,77)" stroke-width="${Math.max(0.5, size * 0.008) * k}"/>
           <g class="zzz" font-weight="900" fill="${INK}" text-anchor="middle" dominant-baseline="central">
@@ -532,39 +575,178 @@ class Tomato {
           </g>
         </g>
       </svg>`;
-    this.svg = host.firstElementChild;
-    this.wave = this.svg.querySelector('.wave');
-    this.face = this.svg.querySelector('.face');
-    this.bobG = this.svg.querySelector('.bob');
-    this.zzz = [...this.svg.querySelectorAll('.zzz text')];
+    const svg = this.svg = host.firstElementChild;
+    const q = s => svg.querySelector(s), all = s => [...svg.querySelectorAll(s)];
+    this.bodyG = q('.body');
+    this.wave = q('.wave');
+    this.faceG = q('.face');
+    this.eyesG = q('.eyes');
+    this.opens = all('.open');
+    this.arcs = all('.arc');
+    this.smile = q('.smile');
+    this.o = q('.o');
+    this.zzz = all('.zzz text');
+
+    // Springs, the hop and the face. `face` remembers the mood it's changing from and when it started.
+    this.s = { level: 0, levelV: 0, tilt: 0, tiltV: 0, jelly: 0, jellyV: 0, lookX: 0, lookXV: 0, lookY: 0, lookYV: 0 };
+    this.air = 0;
+    this.airV = 0;
+    this.leap = null;     // a hop waiting for its anticipation squash to finish
+    this.ripple = 0;
+    this.bobbing = 0;
+    this.sleepiness = 0;
+    this.gaze = [0, 0];
+    this.face = { from: 'awake', to: 'awake', at: -1 };
+    this.blinkAt = 0;
+    this.last = null;
+    this.fresh = true;
     if (animated) liveTomatoes.add(this);
   }
 
   set(progress, mood, bob = false) {
     this.progress = progress;
+    this.mood = mood;
     this.bob = bob;
-    if (mood !== this.mood) {
-      this.mood = mood;
-      this.face.innerHTML = faceMarkup(mood, this.lw);
-    }
-    if (!this.animated || reduced.matches) this.frame(0);
+    if (!this.animated || reduced.matches) this.still();
     return this;
   }
 
-  frame(t) {
-    const still = !this.animated || reduced.matches;
-    if (still) t = 0;
-    this.wave.setAttribute('d', wavePath(this.progress, t));
+  /** Drawn at rest: no springs, no blinking. For little tomatoes, and for Reduce Motion. */
+  still() {
+    const s = this.s;
+    s.level = juiceLevel(this.progress);
+    s.levelV = s.tilt = s.tiltV = s.jelly = s.jellyV = s.lookX = s.lookY = s.lookXV = s.lookYV = 0;
+    this.air = this.airV = this.ripple = 0;
+    this.leap = null;
+    this.bobbing = 0;
+    this.sleepiness = this.mood === 'sleepy' && this.animated ? 1 : 0;
+    this.face = { from: this.mood, to: this.mood, at: -1 };
+    this.last = null;
+    this.draw(0);
+  }
 
-    const sleepy = this.mood === 'sleepy' && !still;
+  get visible() { return !this.host.closest('[hidden]'); }
+
+  // Nudges. Each is a push on a spring; the physics does the rest.
+
+  /** A tap. `side` is where it landed, -1 (left edge) to 1 (right edge). */
+  poke(side = 0) {
+    const s = this.s;
+    s.tiltV += -Math.max(-1, Math.min(1, side || (Math.random() - 0.5))) * 2.6;
+    s.jellyV += 3.4;
+    this.ripple = Math.max(this.ripple, 1.2);
+  }
+
+  /** A little jump for joy: it crouches first, then leaves the ground. */
+  hop(height = 0.12) {
+    this.s.jellyV += 2.2;
+    this.leap = { in: 0.09, v: Math.sqrt(2 * GRAVITY * height) };
+  }
+
+  /** Falls in from `height` tomato-heights above and lands with a squash and a slosh. */
+  drop(height = 0.3) {
+    this.air = height;
+    this.airV = 0;
+  }
+
+  /** Whatever it's sitting on moved: `dv` is the change in sideways speed, in pixels per second. */
+  push(dv) { this.s.tiltV += dv * 0.0011; }
+
+  /** Where to look, as a direction no longer than 1. */
+  lookAt(x, y) { this.gaze = [x, y]; }
+
+  frame(t) {
+    const s = this.s, target = juiceLevel(this.progress);
+    if (this.fresh) { s.level = target; this.fresh = false; }
+    const dt = this.last == null ? 0 : Math.min(0.05, Math.max(0, t - this.last));
+    this.last = t;
+
+    if (this.leap && (this.leap.in -= dt) <= 0) {
+      this.airV = this.leap.v;
+      this.leap = null;
+    }
+    const spring = (key, goal, [k, c], h) => {
+      s[key + 'V'] += (-k * (s[key] - goal) - c * s[key + 'V']) * h;
+      s[key] += s[key + 'V'] * h;
+    };
+    for (let left = dt; left > 1e-6; left -= 1 / 120) {
+      const h = Math.min(left, 1 / 120);
+      spring('level', target, SPRINGS.level, h);
+      spring('tilt', 0, SPRINGS.tilt, h);
+      spring('jelly', 0, SPRINGS.jelly, h);
+      spring('lookX', this.gaze[0], SPRINGS.look, h);
+      spring('lookY', this.gaze[1], SPRINGS.look, h);
+      if (this.air > 0 || this.airV > 0) {
+        this.airV -= GRAVITY * h;
+        this.air += this.airV * h;
+        if (this.air <= 0) {
+          // Landing squashes the body and slops the juice about; a hard landing bounces once.
+          const hit = -this.airV;
+          this.air = 0;
+          this.airV = hit > 1.6 ? hit * 0.2 : 0;
+          s.jellyV += hit * 1.5;
+          s.tiltV += (Math.random() < 0.5 ? -1 : 1) * hit * 0.9;
+          this.ripple = Math.max(this.ripple, hit * 0.7);
+        }
+      }
+    }
+    this.ripple *= Math.exp(-2.4 * dt);
+    this.bobbing += ((this.bob ? 1 : 0) - this.bobbing) * Math.min(1, dt * 2.5);
+    this.sleepiness += ((this.mood === 'sleepy' ? 1 : 0) - this.sleepiness) * Math.min(1, dt * 3);
+    this.draw(t);
+  }
+
+  draw(t) {
+    const s = this.s;
+    this.wave.setAttribute('d', wavePath(s.level, t, s.tilt, 2.5 * (1 + this.ripple)));
+
+    // Squash and stretch about the bottom (it sits on something), the hop, and a slow breath while it grows.
+    const j = Math.max(-0.28, Math.min(0.28, s.jelly));
+    const breath = 1 + 0.018 * Math.sin(t * 2.4) * this.bobbing;
+    this.bodyG.setAttribute('transform',
+      `translate(0 ${(-this.air * 92).toFixed(2)}) translate(50 92) scale(${((1 + j) * breath).toFixed(4)} ${((1 - j) * breath).toFixed(4)}) translate(-50 -92)`);
+
+    // The face turns a little toward what it looks at, and the eyes a little more.
+    this.faceG.setAttribute('transform', `translate(${(s.lookX * 1.1).toFixed(2)} ${(s.lookY * 0.8).toFixed(2)})`);
+    this.eyesG.setAttribute('transform', `translate(${(s.lookX * 1.5).toFixed(2)} ${(s.lookY * 1.2).toFixed(2)})`);
+
+    const f = this.face;
+    if (this.mood !== f.to) Object.assign(f, { from: f.to, to: this.mood, at: t });
+    const k = f.at < 0 || !this.animated ? 1 : Math.min(1, (t - f.at) / 0.32);
+    if (k >= 1) f.from = f.to;
+    const eyes = eyesAt(f.from, f.to, k);
+
+    // Every few seconds an awake tomato blinks, now and then twice.
+    let lid = eyes.lid ?? 1;
+    if (this.animated && eyes.open && k >= 1 && t > 0) {
+      if (!this.blinkAt) this.blinkAt = t + 1.5 + Math.random() * 3;
+      const u = t - this.blinkAt;
+      if (u > 0.16) this.blinkAt = t + (Math.random() < 0.2 ? 0.08 : 2.5 + Math.random() * 3.5);
+      else if (u >= 0) lid *= u < 0.06 ? 1 - 0.92 * (u / 0.06) : 0.08 + 0.92 * ((u - 0.06) / 0.1);
+    }
+    for (const g of this.opens) {
+      g.style.display = eyes.open ? '' : 'none';
+      g.setAttribute('transform', `scale(1 ${Math.max(0.06, lid).toFixed(3)})`);
+    }
+    for (const a of this.arcs) {
+      a.style.display = eyes.open ? 'none' : '';
+      if (!eyes.open) a.setAttribute('d', `M-5.46 0Q0 ${(eyes.arc * 4.2).toFixed(2)} 5.46 0`);
+    }
+
+    const [w0, c0, o0] = MOUTH[f.from], [w1, c1, o1] = MOUTH[f.to], e = smooth(k);
+    const w = w0 + (w1 - w0) * e, c = c0 + (c1 - c0) * e, o = o0 + (o1 - o0) * e;
+    this.smile.style.display = w > 0.05 ? '' : 'none';
+    this.smile.setAttribute('d', `M${(50 - w).toFixed(2)} 59.34Q50 ${(59.34 + c).toFixed(2)} ${(50 + w).toFixed(2)} 59.34`);
+    this.o.style.display = o > 0.02 ? '' : 'none';
+    this.o.setAttribute('transform', `translate(50 60.59) scale(${o.toFixed(3)}) translate(-50 -60.59)`);
+
+    // A sleepy tomato breathes out little z's.
     this.zzz.forEach((z, i) => {
       const q = (t * 0.35 + i / 3) % 1;
       z.setAttribute('x', 84 + 12 * q);
       z.setAttribute('y', 92 * (0.28 - 0.3 * q));
-      z.setAttribute('opacity', sleepy ? 0.55 * Math.sin(q * Math.PI) : 0);
+      z.setAttribute('opacity', this.animated && t ? (0.55 * Math.sin(q * Math.PI) * this.sleepiness).toFixed(3) : 0);
     });
-    const s = this.bob && !still ? 1 + 0.018 * Math.sin(t * 2.4) : 1;
-    this.bobG.setAttribute('transform', `translate(50 46) scale(${s}) translate(-50 -46)`);
   }
 }
 
@@ -592,6 +774,8 @@ const bigTomato = new Tomato(el.tomato.firstElementChild, 290);
 const restTomato = new Tomato($('restTomato'), 170).set(1, 'sleepy');
 const welcomeTomato = new Tomato($('welcomeTomato'), 170).set(1, 'happy', true);
 
+// Buttons whose icon and words change get a slot for each, so the change can be animated.
+const slots = '<span class="ico"></span><span class="lbl"></span>';
 el.openSettings.innerHTML = icon('gear') + '<span class="desk-only">Settings</span>';
 el.openHarvest.innerHTML = `<span class="desk-only hv">${icon('chart')}<span>Harvest</span><em class="num"></em></span>`
   + '<span class="phone-only hv"><span></span><span></span></span>';
@@ -600,80 +784,241 @@ const harvestTomato = new Tomato(harvestPhone.firstElementChild, 18, { animated:
 el.popOut.innerHTML = icon('pip');
 document.querySelectorAll('[data-close]').forEach(b => { b.innerHTML = icon('close'); });
 el.reset.innerHTML = icon('reset');
-el.takeBreak.innerHTML = icon('leaf') + '<span></span>';
+for (const b of [el.toggle, el.takeBreak, el.primary, el.chimeName]) b.innerHTML = slots;
+el.notifyCheck.firstElementChild.classList.add('ico');
 el.again.innerHTML = icon('play') + 'Grow another tomato';
 document.querySelectorAll('[data-chime="-1"]').forEach(b => { b.innerHTML = icon('back'); });
 document.querySelectorAll('[data-chime="1"]').forEach(b => { b.innerHTML = icon('next'); });
 
-// ---------- rendering ----------
+// ---------- motion helpers ----------
 
-let shownLine = '';
-function renderLine() {
-  if (m.line === shownLine) return;
-  shownLine = m.line;
-  if (reduced.matches || !el.line.textContent) { el.line.textContent = m.line; return; }
-  el.line.classList.add('fade');
-  setTimeout(() => { el.line.textContent = shownLine; el.line.classList.remove('fade'); }, 180);
+/** Swaps an icon in its slot: the old one spins away as the new one springs in. */
+function setIcon(slot, name) {
+  if (slot.dataset.icon === name) return;
+  const first = !slot.dataset.icon;
+  slot.dataset.icon = name;
+  let svg = slot.querySelector(`[data-i="${name}"]`);
+  if (!svg) {
+    slot.insertAdjacentHTML('beforeend', icon(name).replace('<svg', `<svg data-i="${name}"`));
+    svg = slot.lastElementChild;
+    if (!first && !reduced.matches) {
+      svg.classList.add('off');
+      svg.getBoundingClientRect();  // start from "off" so it transitions in
+    }
+  }
+  for (const s of slot.children) s.classList.toggle('off', s !== svg);
 }
 
+/** Changes text by blurring the old words away and settling the new ones in from `from` (x and y in px). */
+function swapText(node, text, from = [0, 6]) {
+  if (node.dataset.text === text) return;
+  const first = node.dataset.text === undefined;
+  node.dataset.text = text;
+  if (first || reduced.matches || node.closest('[hidden]')) { node.textContent = text; return; }
+  if (node.fading) return;  // the fade already running will pick up the newest words
+  const [x, y] = from;
+  node.fading = node.animate([{ opacity: 1 }, { opacity: 0, transform: `translate(${-x}px, ${-y}px)`, filter: 'blur(4px)' }],
+    { duration: 150, easing: 'ease-in', fill: 'forwards' });
+  node.fading.onfinish = () => {
+    node.textContent = node.dataset.text;
+    node.fading.cancel();
+    node.fading = null;
+    node.animate([{ opacity: 0, transform: `translate(${x}px, ${y}px)`, filter: 'blur(4px)' }, { opacity: 1, transform: 'none', filter: 'none' }],
+      { duration: 460, easing: SETTLE });
+  };
+}
+
+/** Numbers that roll digit by digit, like a counter: down when time runs down, up when it goes back up. */
+class Roller {
+  constructor(node) { this.node = node; this.text = null; }
+  set(text) {
+    if (text === this.text) return;
+    const old = this.text, n = this.node;
+    this.text = text;
+    const digit = ch => /\d/.test(ch);
+    const same = old != null && old.length === text.length && [...text].every((ch, i) => digit(ch) === digit(old[i]));
+    if (!same || reduced.matches || n.closest('[hidden]')) {
+      n.innerHTML = [...text].map(ch => `<span class="roll"><span>${ch === ' ' ? '&nbsp;' : ch}</span></span>`).join('');
+      if (old != null && !reduced.matches) n.animate([{ opacity: 0, filter: 'blur(6px)', transform: 'scale(.97)' }, {}], { duration: 460, easing: SETTLE });
+      return;
+    }
+    const value = s => parseFloat(s.replace(':', '.'));
+    const d = value(text) < value(old) ? 1 : -1;  // counting down, new digits drop in from above
+    [...text].forEach((ch, i) => {
+      if (ch === old[i]) return;
+      const slot = n.children[i], now = slot.firstElementChild;
+      slot.querySelectorAll('i').forEach(x => x.remove());
+      const gone = document.createElement('i');
+      gone.textContent = old[i];
+      gone.setAttribute('aria-hidden', 'true');
+      slot.append(gone);
+      now.textContent = ch;
+      now.animate([{ transform: `translateY(${-0.42 * d}em)`, opacity: 0, filter: 'blur(3px)' }, { transform: 'none', opacity: 1, filter: 'none' }],
+        { duration: 520, easing: SETTLE });
+      gone.animate([{ opacity: 1 }, { transform: `translateY(${0.42 * d}em)`, opacity: 0, filter: 'blur(3px)' }],
+        { duration: 300, easing: 'ease-in', fill: 'forwards' }).onfinish = () => gone.remove();
+    });
+  }
+}
+const timeRoller = new Roller(el.time);
+const restRoller = new Roller(el.restTime);
+
+/** Plays a CSS animation class again from the start. */
+function replay(node, cls) {
+  if (reduced.matches) return;
+  node.classList.remove(cls);
+  void node.offsetWidth;
+  node.classList.add(cls);
+}
+
+/** Counts a number up from zero, easing out, when a panel opens. */
+function countUp(node, to) {
+  if (reduced.matches || to < 2) { node.textContent = to; return; }
+  const t0 = performance.now();
+  const step = now => {
+    const u = Math.min(1, (now - t0) / 700);
+    node.textContent = Math.round(to * (1 - (1 - u) ** 3));
+    if (u < 1) requestAnimationFrame(step);
+  };
+  node.textContent = 0;
+  requestAnimationFrame(step);
+}
+
+/** Where the big tomato's heart is on screen: breaks bloom out of it and fold back into it. */
+function tomatoCentre() {
+  const r = el.tomato.getBoundingClientRect();
+  return r.width ? [r.left + r.width / 2, r.top + r.height * 0.55] : [innerWidth / 2, innerHeight * 0.4];
+}
+
+/** A circle of a new scene spreading out of the tomato (or shrinking back into it). */
+function bloom(node, open, { duration = open ? 950 : 560, then } = {}) {
+  node.blooming?.cancel();
+  node.blooming = null;
+  if (reduced.matches) { then?.(); return; }
+  const [x, y] = tomatoCentre();
+  const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y)) + 40;
+  const shut = `circle(0px at ${x}px ${y}px)`, wide = `circle(${r}px at ${x}px ${y}px)`;
+  const a = node.animate({ clipPath: open ? [shut, wide] : [wide, shut] },
+    { duration, easing: open ? 'cubic-bezier(.22, .7, .12, 1)' : 'cubic-bezier(.6, 0, .78, .3)', fill: 'forwards' });
+  node.blooming = a;
+  a.onfinish = () => {
+    if (node.blooming !== a) return;
+    node.blooming = null;
+    then?.();
+    a.cancel();
+  };
+}
+
+/** The picked tomato flies in an arc into the harvest, which bumps as it lands. */
+let badgeHeld = null;
+function flyToHarvest() {
+  const target = phone.matches ? harvestPhone.firstElementChild : harvestDesk.lastElementChild;
+  const land = () => {
+    badgeHeld = null;
+    harvestShown = '';
+    renderHarvest();
+    target.animate([{ transform: 'scale(1.6)' }, { transform: 'none' }], { duration: 700, easing: POP });
+    el.openHarvest.animate([{ transform: 'scale(1.1, .9)' }, { transform: 'none' }], { duration: 700, easing: POP });
+  };
+  const from = el.tomato.getBoundingClientRect(), to = target.getBoundingClientRect();
+  if (reduced.matches || !from.width || !to.width) return land();
+  const size = 60;
+  const flyer = document.createElement('div');
+  flyer.className = 'flyer';
+  new Tomato(flyer, size, { animated: false }).set(1, 'happy');
+  document.body.append(flyer);
+  const [x0, y0] = [from.left + from.width / 2, from.top + from.height * 0.42];
+  const [x1, y1] = [to.left + to.width / 2, to.top + to.height / 2];
+  const [cx, cy] = [(x0 + x1) / 2 + (x0 - x1) * 0.15, Math.min(y0, y1) - Math.max(80, Math.abs(x1 - x0) * 0.25)];
+  const s0 = from.width * 0.42 / size, s1 = Math.max(to.width, to.height) * 1.3 / size;
+  const spin = x1 > x0 ? 1 : -1;
+  const frames = [];
+  for (let i = 0; i <= 30; i++) {
+    const u = i / 30, v = 1 - u;
+    const x = v * v * x0 + 2 * v * u * cx + u * u * x1, y = v * v * y0 + 2 * v * u * cy + u * u * y1;
+    const s = i === 0 ? s0 * 0.5 : s0 + (s1 - s0) * smooth(u);
+    frames.push({ transform: `translate(${x - size / 2}px, ${y - size * 0.46}px) rotate(${spin * 300 * u}deg) scale(${s})` });
+  }
+  const a = flyer.animate(frames, { duration: 820, easing: 'cubic-bezier(.4, 0, .25, 1)' });
+  a.onfinish = () => { flyer.remove(); land(); };
+}
+
+// ---------- rendering ----------
+
+function renderLine() { swapText(el.line, m.line); }
+
 function render() {
-  const pending = m.phase === 'breakPending';
+  const pending = m.phase === 'breakPending' && !celebrating;
   bigTomato.set(fill(), mood(), m.running);
-  el.time.textContent = pending ? breakLengthLabel() : timeString();
+  timeRoller.set(celebrating || (phone.matches && m.phase === 'restDone') ? '00:00' : pending ? breakLengthLabel() : timeString());
   renderLine();
   el.focusControls.hidden = pending;
   el.pendingControls.hidden = !pending;
-  el.takeBreak.lastElementChild.textContent = `Take ${m.isLongBreak ? 'long break' : 'break'} now`;
-  el.toggle.innerHTML = icon(m.running ? 'pause' : 'play') + (m.running ? 'Pause' : m.phase === 'focus' ? 'Resume' : 'Start focus');
+  setIcon(el.takeBreak.firstElementChild, 'leaf');
+  swapText(el.takeBreak.lastElementChild, `Take ${m.isLongBreak ? 'long break' : 'break'} now`, [0, 4]);
+  if (!celebrating) {
+    setIcon(el.toggle.firstElementChild, m.running ? 'pause' : 'play');
+    swapText(el.toggle.lastElementChild, m.running ? 'Pause' : m.phase === 'focus' ? 'Resume' : 'Start focus', [0, 4]);
+  }
   el.reset.disabled = m.phase === 'idle';
-  el.summary.textContent = FAST ? 'fast test mode' : `${settings.focusMinutes} min focus · ${settings.shortMinutes} min break · ${settings.longMinutes} min long break`;
+  el.summary.textContent = FAST ? 'fast test mode' : `${settings.focusMinutes} min focus, ${settings.shortMinutes} min break, ${settings.longMinutes} min long break`;
   renderCycle();
   renderPhone();
-  document.title = m.running ? `${timeString()} · Tomatito` : 'Tomatito';
+  document.title = m.running ? `${timeString()} ${m.phase === 'rest' ? 'of break' : 'left'}` : 'Tomatito';
   renderBreak();
   drawMini();
   renderHarvest();
 }
 
-/** One dot per tomato in the set that earns a long break; the growing one fills up. */
-let dotsShown = '';
+/** One dot per tomato in the set that earns a long break; the growing one fills up.
+ *  A tomato joins the set with a pop, and a finished set gives a little cheer. */
+let dotsShown = '', dotsDone = -1, dotsLong = false, growingDot = null;
 function renderCycle() {
   const n = settings.longEvery;
   const pendingLong = m.phase === 'breakPending' && m.isLongBreak;
   const done = pendingLong ? n : todayCount() % n;
   const growing = m.phase === 'focus' ? done : -1;
-  const pct = Math.round(progress() * 100);
-  const sig = [phone.matches, n, done, growing, pct].join();
+  const p = progress();
+  const sig = [phone.matches, n, done, growing].join();
   if (sig !== dotsShown) {
+    const picked = dotsShown && dotsShown.split(',')[1] === String(n) && done === dotsDone + 1 ? done - 1 : -1;
     dotsShown = sig;
-    if (phone.matches) {
-      // On a phone, as in the iPhone app: little tomatoes, the growing one ripening.
-      el.dots.textContent = '';
-      for (let i = 0; i < n; i++) {
-        const span = document.createElement('span');
-        const now = i === growing;
-        new Tomato(span, 22, { animated: false }).set(i < done ? 1 : now ? pct / 100 : 0, i < done ? 'happy' : 'awake');
-        span.style.opacity = i < done || now ? 1 : 0.4;
-        el.dots.append(span);
+    dotsDone = done;
+    growingDot = null;
+    el.dots.textContent = '';
+    for (let i = 0; i < n; i++) {
+      const now = i === growing;
+      let dot;
+      if (phone.matches) {
+        // On a phone, as in the iPhone app: little tomatoes, the growing one ripening.
+        dot = document.createElement('span');
+        const t = new Tomato(dot, 22, { animated: false }).set(i < done ? 1 : now ? p : 0, i < done ? 'happy' : 'awake');
+        dot.style.opacity = i < done || now ? 1 : 0.4;
+        if (now) growingDot = t;
+      } else {
+        dot = document.createElement('b');
+        if (i < done) dot.className = 'full';
+        if (now) { dot.className = 'now'; growingDot = dot; }
       }
-    } else {
-      let html = '';
-      for (let i = 0; i < n; i++) {
-        html += i < done ? '<b class="full"></b>' : i === growing ? `<b class="now" style="--p:${pct}%"></b>` : '<b></b>';
-      }
-      el.dots.innerHTML = html;
+      if (i === picked) dot.classList.add('picked');
+      dot.style.setProperty('--i', i);
+      el.dots.append(dot);
     }
   }
+  if (pendingLong && !dotsLong) for (const d of el.dots.children) replay(d, 'cheer');
+  dotsLong = pendingLong;
+  if (growingDot instanceof Tomato) growingDot.set(p, 'awake');
+  else if (growingDot) growingDot.style.setProperty('--p', `${Math.round(p * 100)}%`);
   const left = n - done;
-  el.cycleText.textContent = pendingLong ? 'A long break, well earned 🌿'
+  swapText(el.cycleText, pendingLong ? 'A long break, well earned 🌿'
     : left === 1 ? 'The next one earns a long break'
-    : `${left} more for a long break`;
+    : `${left} more for a long break`);
 }
 
 // ---------- phone ----------
 
 const phone = matchMedia('(max-width: 600px)');
-phone.addEventListener?.('change', () => { dotsShown = ''; render(); });
+phone.addEventListener?.('change', () => { dotsShown = ''; breakShown = null; render(); });
 
 /** The one big button and the quiet one under it, as in the iPhone app. */
 function phoneActions() {
@@ -693,25 +1038,41 @@ function phoneActions() {
 }
 let primaryAction = start, secondaryAction = null;
 
+/** On a phone the room itself turns mint for a break, the colour spreading out of the tomato. */
+const tint = document.createElement('div');
+tint.style.cssText = 'position:fixed;inset:0;pointer-events:none;display:none';
+el.ambient.before(tint);
+let roomResting = false;
+function setRoom(resting) {
+  if (resting === roomResting) return;
+  roomResting = resting;
+  if (reduced.matches || !phone.matches) { document.body.classList.toggle('resting', resting); return; }
+  tint.style.background = resting ? 'linear-gradient(135deg, var(--mint), var(--peach))' : 'linear-gradient(var(--cream), var(--blush))';
+  tint.style.display = '';
+  bloom(tint, true, { duration: 900, then: () => { document.body.classList.toggle('resting', roomResting); tint.style.display = 'none'; } });
+}
+
 function renderPhone() {
   const resting = phone.matches && (m.phase === 'rest' || m.phase === 'breakPending');
-  document.body.classList.toggle('resting', phone.matches && m.phase === 'rest');
+  setRoom(phone.matches && m.phase === 'rest');
   if (!phone.matches) return keepAwake();
-  const [title, glyph, act, second, act2] = phoneActions();
-  el.primary.innerHTML = icon(glyph) + title;
-  el.primary.classList.toggle('green', resting);
-  primaryAction = act;
-  el.secondary.textContent = second || ' ';
-  el.secondary.classList.toggle('none', !second);
-  secondaryAction = act2;
+  if (!celebrating) {
+    const [title, glyph, act, second, act2] = phoneActions();
+    setIcon(el.primary.firstElementChild, glyph);
+    swapText(el.primary.lastElementChild, title, [0, 4]);
+    el.primary.classList.toggle('green', resting);
+    primaryAction = act;
+    swapText(el.secondary, second || ' ', [0, 4]);
+    el.secondary.classList.toggle('none', !second);
+    secondaryAction = act2;
+  }
   el.setup.hidden = m.phase !== 'idle';
-  el.setup.textContent = FAST ? 'fast test mode' : `${settings.focusMinutes} min focus · ${settings.shortMinutes} min breaks`;
+  el.setup.textContent = FAST ? 'fast test mode' : `${settings.focusMinutes} min focus, ${settings.shortMinutes} min breaks`;
   el.longChip.hidden = !(m.isLongBreak && (m.phase === 'rest' || m.phase === 'breakPending'));
   el.ideaInline.hidden = m.phase !== 'rest';
   const [emoji, text] = LINES.ideas[m.ideaIndex % LINES.ideas.length];
-  el.ideaInline.children[1].textContent = emoji;
-  el.ideaInline.children[2].textContent = text;
-  if (m.phase === 'restDone') el.time.textContent = '00:00';
+  swapText(el.ideaInline.children[1], emoji);
+  swapText(el.ideaInline.children[2], text);
   keepAwake();
 }
 
@@ -733,16 +1094,16 @@ async function keepAwake() {
 
 let harvestShown = '';
 function renderHarvest() {
-  const days = history(), today = days[6].count;
-  const sig = JSON.stringify(days) + settings.focusMinutes;
+  const days = history(), today = days[6].count, badge = badgeHeld ?? today;
+  const sig = JSON.stringify(days) + settings.focusMinutes + badge;
   if (sig === harvestShown) return;
   harvestShown = sig;
   const focused = today * settings.focusMinutes;
   el.minutes.textContent = today > 0 ? (focused >= 60 ? `${Math.floor(focused / 60)} h ${focused % 60} min focused` : `${focused} min focused`) : '';
   el.todayNum.textContent = today;
-  harvestDesk.lastElementChild.textContent = today;
-  harvestPhone.lastElementChild.textContent = today ? `× ${today} today` : 'Harvest';
-  harvestTomato.set(today ? 1 : 0, 'happy');
+  harvestDesk.lastElementChild.textContent = badge;
+  swapText(harvestPhone.lastElementChild, badge ? `× ${badge} today` : 'Harvest');
+  harvestTomato.set(badge ? 1 : 0, 'happy');
   el.todayWord.textContent = today === 1 ? 'tomato' : 'tomatoes';
   el.weekTotal.textContent = days.reduce((a, d) => a + d.count, 0);
   el.streak.textContent = streak();
@@ -754,54 +1115,75 @@ function renderHarvest() {
     for (let i = 0; i < Math.min(today, 12); i++) {
       const span = document.createElement('span');
       new Tomato(span, 30, { animated: false }).set(1, 'happy');
+      span.style.setProperty('--i', i);
       el.basket.append(span);
     }
-    if (today > 12) el.basket.insertAdjacentHTML('beforeend', `<b>+${today - 12}</b>`);
+    if (today > 12) el.basket.insertAdjacentHTML('beforeend', `<b style="--i:12">+${today - 12}</b>`);
   }
   const peak = Math.max(1, ...days.map(d => d.count));
-  el.week.innerHTML = days.map(d => `
-    <div class="${d.isToday ? 'today' : d.count ? 'some' : ''}">
+  el.week.innerHTML = days.map((d, i) => `
+    <div class="${d.isToday ? 'today' : d.count ? 'some' : ''}" style="--i:${i}">
       <span class="n">${d.count || ''}</span>
       <span class="bar" style="height:${6 + 64 * d.count / peak}px"></span>
       <span class="d">${d.label}</span>
     </div>`).join('');
 }
 
-let ideaShown = -1;
+/** The break screen blooms out of the tomato and, when it's over, folds back into it. */
+let breakShown = false, breakWas = '';
 function renderBreak() {
   // On a phone the break happens right on the main screen instead.
   const on = (m.phase === 'rest' || m.phase === 'restDone') && !phone.matches;
-  if (el.brk.hidden === on) {
-    el.brk.hidden = !on;
-    if (on) sizeBokeh();
+  if (on !== breakShown) {
+    const first = breakShown === null;
+    breakShown = on;
+    if (on) {
+      el.brk.hidden = false;
+      sizeBokeh();
+      if (!first) bloom(el.brk, true);
+      restTomato.drop(0.3);
+    } else if (!el.brk.hidden) {
+      bloom(el.brk, false, { then: () => {
+        el.brk.hidden = true;
+        bigTomato.poke();  // the break went back into the tomato
+      } });
+      if (reduced.matches) el.brk.hidden = true;
+    }
   }
-  if (!on) return;
+  if (!on) { breakWas = ''; return; }
   const done = m.phase === 'restDone';
+  const scene = done ? 'welcome' : 'resting';
   el.resting.hidden = done;
   el.skip.hidden = done;
   el.welcome.hidden = !done;
+  if (scene !== breakWas) {
+    // Each scene arrives in a cascade: the tomato, then the words, then the rest.
+    breakWas = scene;
+    const stage = done ? el.welcome : el.resting;
+    [...stage.children].forEach((c, i) => c.style.setProperty('--i', i));
+    replay(stage, 'enter');
+    if (!done) replay(el.brk, 'enter-skip');
+    if (done) {
+      // It wakes up: eyes open from sleep into a smile, and it hops.
+      welcomeTomato.set(1, 'sleepy', true);
+      welcomeTomato.face = { from: 'sleepy', to: 'sleepy', at: -1 };
+      setTimeout(() => { welcomeTomato.set(1, 'happy', true); welcomeTomato.hop(0.12); }, 520);
+    }
+    setTimeout(() => stage.classList.remove('enter'), 1600);
+  }
   if (done) {
-    el.welcomeTitle.textContent = m.welcomeTitle;
-    el.welcomeSub.textContent = m.welcomeSub;
+    swapText(el.welcomeTitle, m.welcomeTitle);
+    swapText(el.welcomeSub, m.welcomeSub);
     return;
   }
   el.longBadge.hidden = !m.isLongBreak;
-  el.longBadge.textContent = `LONG BREAK · ${breakLengthLabel()}`;
-  el.breakTitle.textContent = m.breakTitle;
-  el.breakSub.textContent = m.breakSub;
-  el.restTime.textContent = timeString();
-  if (m.ideaIndex !== ideaShown) {
-    const first = ideaShown < 0;
-    ideaShown = m.ideaIndex;
-    const [emoji, text] = LINES.ideas[m.ideaIndex % LINES.ideas.length];
-    const swap = () => {
-      el.idea.firstElementChild.textContent = emoji;
-      el.idea.lastElementChild.textContent = text;
-      el.idea.classList.remove('fade');
-    };
-    if (first || reduced.matches) swap();
-    else { el.idea.classList.add('fade'); setTimeout(swap, 400); }
-  }
+  el.longBadge.textContent = `Long break, ${breakLengthLabel()}`;
+  swapText(el.breakTitle, m.breakTitle);
+  swapText(el.breakSub, m.breakSub);
+  restRoller.set(timeString());
+  const [emoji, text] = LINES.ideas[m.ideaIndex % LINES.ideas.length];
+  swapText(el.idea.firstElementChild, emoji, [0, 8]);
+  swapText(el.idea.lastElementChild, text, [0, 8]);
 }
 
 
@@ -820,21 +1202,25 @@ el.steps.innerHTML = STEPS.map(([label, key]) => `
     <span class="val num" id="val-${key}"></span>
     <button class="mini press" data-step="${key}" data-by="1" aria-label="More">${icon('plus')}</button>
   </div>`).join('');
+const stepRollers = Object.fromEntries(STEPS.map(([, key]) => [key, new Roller($(`val-${key}`))]));
 
+let chimeStep = 1;
 function renderSettings() {
   for (const [, key, unit, lo, hi] of STEPS) {
-    $(`val-${key}`).textContent = `${settings[key]} ${unit}`;
+    stepRollers[key].set(`${settings[key]} ${unit}`);
     el.steps.querySelector(`[data-step="${key}"][data-by="-1"]`).disabled = settings[key] <= lo;
     el.steps.querySelector(`[data-step="${key}"][data-by="1"]`).disabled = settings[key] >= hi;
   }
-  el.chimeName.innerHTML = icon(settings.chime === 'Silent' ? 'mute' : 'sound') + settings.chime;
+  // The chime's name slides in from the side you stepped toward.
+  setIcon(el.chimeName.firstElementChild, settings.chime === 'Silent' ? 'mute' : 'sound');
+  swapText(el.chimeName.lastElementChild, settings.chime, [14 * chimeStep, 0]);
   const supported = 'Notification' in window;
   const blocked = supported && Notification.permission === 'denied';
   const on = settings.notify && supported && !blocked;
   el.notifyCheck.classList.toggle('on', on);
-  el.notifyCheck.firstElementChild.innerHTML = icon(on ? 'on' : 'off');
+  setIcon(el.notifyCheck.firstElementChild, on ? 'on' : 'off');
   el.notifyNote.textContent = !supported ? 'Not available in this browser'
-    : blocked ? 'Blocked — allow notifications for this site to turn on'
+    : blocked ? 'Blocked. Allow notifications for this site to turn this on.'
     : 'A notification when it’s time for a break';
 }
 
@@ -851,13 +1237,12 @@ el.steps.addEventListener('click', e => {
 
 document.querySelectorAll('[data-chime]').forEach(b => b.addEventListener('click', () => {
   const i = CHIMES.indexOf(settings.chime);
-  settings.chime = CHIMES[(i + Number(b.dataset.chime) + CHIMES.length) % CHIMES.length];
+  chimeStep = Number(b.dataset.chime);
+  settings.chime = CHIMES[(i + chimeStep + CHIMES.length) % CHIMES.length];
   saveSettings();
   renderSettings();
   playChime();  // hear what you picked
 }));
-
-
 
 el.notifyCheck.addEventListener('click', () => {
   if (!('Notification' in window) || Notification.permission === 'denied') return;
@@ -875,13 +1260,25 @@ el.restore.addEventListener('click', () => {
   render();
 });
 
-// Harvest and settings slide in from the side; one at a time.
+// Harvest and settings slide in from the side (up from the bottom on a phone); one at a time.
+// What's inside follows a beat behind, and the harvest grows its week and counts its tomatoes.
 const drawerOpen = () => document.body.classList.contains('drawer-open');
 function showDrawer(drawer) {
   if (drawer === el.settings) renderSettings();
   for (const d of [el.harvest, el.settings]) {
+    const opening = d === drawer && !d.classList.contains('open');
     d.classList.toggle('open', d === drawer);
     d.inert = d !== drawer;
+    if (!opening) continue;
+    [...d.children].forEach((c, i) => c.style.setProperty('--i', i));
+    if (d === el.harvest) {
+      renderHarvest();
+      replay(d, 'grow');
+      const week = history().reduce((a, day) => a + day.count, 0);
+      for (const [node, value] of [[el.todayNum, todayCount()], [el.weekTotal, week], [el.streak, streak()], [el.allTime, allTime()]]) {
+        countUp(node, value);
+      }
+    }
   }
   document.body.classList.toggle('drawer-open', !!drawer);
 }
@@ -890,6 +1287,41 @@ el.openHarvest.addEventListener('click', () => showDrawer(el.harvest));
 el.openSettings.addEventListener('click', () => showDrawer(el.settings));
 el.scrim.addEventListener('click', () => showDrawer(null));
 document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => showDrawer(null)));
+
+// On a phone the drawers are sheets: pull one down by its handle or title to put it away.
+for (const d of [el.harvest, el.settings]) {
+  let y0 = 0, dy = 0, v = 0, lastY = 0, lastT = 0, held = false;
+  d.addEventListener('pointerdown', e => {
+    if (!phone.matches || !d.classList.contains('open') || e.target.closest('button')) return;
+    if (!e.target.closest('.grab, header')) return;
+    held = true;
+    y0 = lastY = e.clientY;
+    lastT = e.timeStamp;
+    dy = v = 0;
+    d.setPointerCapture(e.pointerId);
+    d.classList.add('dragging');
+  });
+  d.addEventListener('pointermove', e => {
+    if (!held) return;
+    const raw = e.clientY - y0;
+    dy = raw > 0 ? raw : -Math.sqrt(-raw) * 2;  // pulling up only stretches a little
+    v = (e.clientY - lastY) / Math.max(1, e.timeStamp - lastT);
+    lastY = e.clientY;
+    lastT = e.timeStamp;
+    d.style.transform = `translateY(${dy}px)`;
+    el.scrim.style.opacity = String(Math.max(0, 1 - Math.max(0, dy) / d.offsetHeight));
+  });
+  const letGo = () => {
+    if (!held) return;
+    held = false;
+    d.classList.remove('dragging');
+    d.style.transform = '';
+    el.scrim.style.opacity = '';
+    if (dy > 110 || v > 0.5) showDrawer(null);  // far enough, or flicked: it carries on down
+  };
+  d.addEventListener('pointerup', letGo);
+  d.addEventListener('pointercancel', letGo);
+}
 
 // ---------- mini timer: a floating video, so it stays on top in every browser ----------
 
@@ -923,7 +1355,7 @@ function drawTomato2D(ctx, x, y, size, progress, mood) {
   flesh.addColorStop(0, 'rgb(245,92,79)');
   flesh.addColorStop(1, 'rgb(209,51,51)');
   ctx.fillStyle = flesh;
-  ctx.fill(new Path2D(wavePath(progress, 0)));
+  ctx.fill(new Path2D(wavePath(juiceLevel(progress), 0)));
   ctx.restore();
   ctx.save();
   ctx.translate(25, 33.12);
@@ -1088,22 +1520,18 @@ el.primary.addEventListener('click', () => primaryAction?.());
 el.secondary.addEventListener('click', () => secondaryAction?.());
 el.setup.addEventListener('click', () => showDrawer(el.settings));
 
-// The tomato wobbles like jelly when you poke it.
-el.tomato.addEventListener('click', () => {
+// The tomato wobbles like jelly when you poke it, and its juice sloshes away from your finger.
+el.tomato.addEventListener('click', e => {
   if (phone.matches) primaryAction?.();  // on a phone the tomato is a big button too
-  if (reduced.matches) return;
-  const s = el.tomato.firstElementChild;
-  s.classList.add('on');
-  setTimeout(() => s.classList.remove('on'), 120);
+  const r = el.tomato.getBoundingClientRect();
+  bigTomato.poke((e.clientX - (r.left + r.width / 2)) / (r.width / 2));
 });
 
 // A springy pop and a ripple on release, so even the quickest click visibly lands.
 document.addEventListener('pointerup', e => {
   const b = e.target.closest?.('.press');
   if (!b || b.disabled) return;
-  b.classList.remove('pop');
-  void b.offsetWidth;
-  b.classList.add('pop');
+  replay(b, 'pop');
 });
 document.addEventListener('animationend', e => { if (e.animationName === 'pop') e.target.classList.remove('pop'); });
 
@@ -1112,24 +1540,41 @@ addEventListener('keydown', e => {
   if (e.target.closest?.('button') && (e.key === ' ' || e.key === 'Enter')) return;
   if (e.key === 'Escape' && drawerOpen()) return showDrawer(null);
   if (drawerOpen() || !el.brk.hidden || e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.key === ' ') { e.preventDefault(); toggle(); }
-  if ((e.key === 'r' || e.key === 'R') && m.phase !== 'idle') reset();
+  // Keys press the button they stand for, so the button answers the same way a click does.
+  if (e.key === ' ') { e.preventDefault(); replay(el.pendingControls.hidden ? el.toggle : el.takeBreak, 'pop'); toggle(); }
+  if ((e.key === 'r' || e.key === 'R') && m.phase !== 'idle') { replay(el.reset, 'pop'); reset(); }
 });
 
-// Skipping takes a deliberate four-second hold.
-let holdTimer = 0;
+// Skipping takes a deliberate four-second hold. The button fills with juice while you hold
+// (and ticks on phones that can buzz); let go early and it drains away.
+let holdTimer = 0, holdTicks = [];
+const skipTexts = el.skip.querySelectorAll('.skip-text');
+function skipSay(text) {
+  if (skipTexts[0].textContent === text) return;
+  const w0 = el.skip.offsetWidth;
+  skipTexts.forEach(t => { t.textContent = text; });
+  const w1 = el.skip.offsetWidth;
+  if (w0 !== w1 && !reduced.matches) el.skip.animate([{ width: `${w0}px` }, { width: `${w1}px` }], { duration: 450, easing: SETTLE });
+}
 function holdStart(e) {
   if (e.type === 'keydown' && (e.repeat || (e.key !== ' ' && e.key !== 'Enter'))) return;
   e.preventDefault();
   el.skip.classList.add('holding');
-  el.skip.lastElementChild.textContent = 'Are you sure? Keep holding…';
+  skipSay('Are you sure? Keep holding…');
   clearTimeout(holdTimer);
-  holdTimer = setTimeout(() => { holdEnd(); reset(); }, 4000);
+  holdTicks.forEach(clearTimeout);
+  holdTicks = [1000, 2000, 3000].map(ms => setTimeout(() => navigator.vibrate?.(8), ms));
+  holdTimer = setTimeout(() => {
+    el.skip.classList.add('done');
+    navigator.vibrate?.(24);
+    holdTimer = setTimeout(() => { holdEnd(); reset(); }, 180);
+  }, 4000);
 }
 function holdEnd() {
   clearTimeout(holdTimer);
-  el.skip.classList.remove('holding');
-  el.skip.lastElementChild.textContent = 'Hold to skip break';
+  holdTicks.forEach(clearTimeout);
+  el.skip.classList.remove('holding', 'done');
+  skipSay('Hold to skip break');
 }
 el.skip.addEventListener('pointerdown', holdStart);
 el.skip.addEventListener('keydown', holdStart);
@@ -1149,8 +1594,9 @@ addEventListener('resize', sizeBokeh);
 
 const BOKEH_COLORS = ['245,92,79', '102,179,102', '255,255,255'];
 const AMBIENT_COLORS = ['245,92,79', '252,190,160', '255,255,255'];
-function drawBokeh(canvas, t, colors = BOKEH_COLORS, alpha = 0.1) {
-  const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height, r0 = devicePixelRatio || 1;
+/** Soft circles drifting up. During a break the whole room breathes with the guide. */
+function drawBokeh(canvas, t, colors = BOKEH_COLORS, alpha = 0.1, breath = 0.5) {
+  const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height, r0 = (devicePixelRatio || 1) * (0.96 + 0.08 * breath);
   ctx.clearRect(0, 0, w, h);
   for (let i = 0; i < 16; i++) {
     const seed = i * 12.9898;
@@ -1167,25 +1613,69 @@ function drawBokeh(canvas, t, colors = BOKEH_COLORS, alpha = 0.1) {
 }
 
 const smallBreath = el.ideaInline.querySelector('.breath i'), smallWord = el.ideaInline.querySelector('.breath span');
+/** In for four seconds, out for four. Returns how full the lungs are, 0 to 1. */
 function drawBreath(t) {
   const c = t % 8, s = 0.5 - 0.5 * Math.cos(c / 8 * 2 * Math.PI);
   const scale = reduced.matches ? 'scale(.73)' : `scale(${0.45 + 0.55 * s})`;
   el.breath.style.transform = smallBreath.style.transform = scale;
-  el.breathWord.textContent = reduced.matches ? 'breathe slowly' : c < 4 ? 'breathe in' : 'breathe out';
-  smallWord.textContent = reduced.matches ? 'breathe' : c < 4 ? 'in' : 'out';
+  swapText(el.breathWord, reduced.matches ? 'breathe slowly' : c < 4 ? 'breathe in' : 'breathe out', [0, 4]);
+  swapText(smallWord, reduced.matches ? 'breathe' : c < 4 ? 'in' : 'out', [0, 3]);
+  return s;
 }
 
+// The big tomato glances toward the pointer, and its juice sloshes when the window is dragged around.
+let pointer = null, lastLook = '', win = null;
+if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
+  addEventListener('pointermove', e => { pointer = [e.clientX, e.clientY]; }, { passive: true });
+  document.documentElement.addEventListener('pointerleave', () => { pointer = null; });
+  addEventListener('blur', () => { pointer = null; });
+}
+function feel(t) {
+  const key = pointer ? pointer.join() : '';
+  if (key !== lastLook) {
+    lastLook = key;
+    if (!pointer) bigTomato.lookAt(0, 0);
+    else {
+      const [cx, cy] = tomatoCentre(), dx = pointer[0] - cx, dy = pointer[1] - cy, d = Math.hypot(dx, dy) || 1;
+      const reach = Math.min(1, d / 260) / d;
+      bigTomato.lookAt(dx * reach, dy * reach);
+    }
+  }
+  const x = screenX;
+  if (win && t > win.t) {
+    const v = (x - win.x) / (t - win.t);
+    if (Math.abs(x - win.x) < 400) bigTomato.push(v - win.v);
+    win = { x, t, v };
+  } else win = { x, t, v: 0 };
+}
+
+let aloft = 0;
 function frame(now) {
   const t = reduced.matches ? 0 : (performance.timeOrigin + now) / 1000;
-  for (const tm of liveTomatoes) tm.frame(t);
-  if (!el.brk.hidden) { drawBokeh(el.bokeh, t); drawBreath(t); }
-  else {
+  if (!reduced.matches) {
+    feel(t);
+    for (const tm of liveTomatoes) if (tm.visible) tm.frame(t);
+    // The shadow under the big tomato shrinks while it's in the air.
+    const air = Math.min(1, bigTomato.air * 4);
+    if (air || aloft) el.tomato.style.setProperty('--air', air.toFixed(3));
+    aloft = air;
+  }
+  if (!el.brk.hidden) {
+    const breath = drawBreath(t);
+    drawBokeh(el.bokeh, t, BOKEH_COLORS, 0.1, breath);
+  } else {
     const resting = document.body.classList.contains('resting');
-    drawBokeh(el.ambient, t, resting ? BOKEH_COLORS : AMBIENT_COLORS, 0.09);
-    if (resting) drawBreath(t);
+    const breath = resting ? drawBreath(t) : 0.5;
+    drawBokeh(el.ambient, t, resting ? BOKEH_COLORS : AMBIENT_COLORS, 0.09, breath);
   }
   requestAnimationFrame(frame);
 }
+
+// Reduce Motion can be switched on and off while the app is open.
+reduced.addEventListener?.('change', () => {
+  for (const tm of liveTomatoes) tm.set(tm.progress, tm.mood, tm.bob);
+  render();
+});
 
 /**
  * The clock ticks from a tiny worker: browsers slow a hidden page's own timers to
@@ -1214,6 +1704,14 @@ restore();
 render();
 startClock();
 setInterval(renderHarvest, 60_000);  // midnight turns the page on the harvest
+
+// Opening the app: the tomato drops in, lands with a squash and a slosh, and everything settles around it.
+if (!reduced.matches) {
+  [...document.querySelector('.room').children].forEach((c, i) => c.style.setProperty('--i', i));
+  document.body.classList.add('arrive');
+  bigTomato.drop(0.3);
+  setTimeout(() => document.body.classList.remove('arrive'), 2000);
+}
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});

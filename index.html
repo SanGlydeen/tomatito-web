@@ -12,10 +12,19 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Tomatito">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="preload" href="fonts/nunito-latin.woff2" as="font" type="font/woff2" crossorigin>
 <style>
+/* Nunito (SIL Open Font License, fonts/OFL.txt), served from here so no visitor's browser has to ask Google for it. */
+@font-face {
+  font-family: 'Nunito'; font-style: normal; font-weight: 500 900; font-display: swap;
+  src: url(fonts/nunito-latin-ext.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Nunito'; font-style: normal; font-weight: 500 900; font-display: swap;
+  src: url(fonts/nunito-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 :root {
   --red: rgb(245, 92, 79);
   --deep: rgb(209, 51, 51);
@@ -363,7 +372,7 @@ body.drawer-open #scrim { opacity: 1; pointer-events: auto; }
   <div class="card checks">
     <button class="check press" id="notifyCheck"><span></span><span>Tell me when a tomato is ripe<small id="notifyNote"></small></span></button>
   </div>
-  <footer><button class="link press" id="restore">Restore defaults</button><span>v1.2</span></footer>
+  <footer><button class="link press" id="restore">Restore defaults</button><span><a href="https://tomatito.app/privacy.html" target="_blank" rel="noopener" style="color:inherit">Privacy</a>&nbsp;&nbsp; v1.2</span></footer>
 </aside>
 
 <div id="break" hidden>

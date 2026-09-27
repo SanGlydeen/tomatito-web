@@ -1299,7 +1299,7 @@ for (const d of [el.harvest, el.settings]) {
     y0 = lastY = e.clientY;
     lastT = e.timeStamp;
     dy = v = 0;
-    d.setPointerCapture(e.pointerId);
+    try { d.setPointerCapture(e.pointerId); } catch {}  // keep following the finger outside the sheet
     d.classList.add('dragging');
   });
   d.addEventListener('pointermove', e => {

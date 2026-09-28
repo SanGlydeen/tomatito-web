@@ -296,6 +296,7 @@ function tick() {
   m.lastTick = now;
   // Ticks come every quarter second, so a gap this long means the computer slept.
   if (gap > 90_000) return handleGap();
+  const shown = Math.ceil(m.remaining);
   m.remaining = Math.max(0, (m.endAt - now) / 1000);
   m.lastRemaining = m.remaining;
   refreshLine();
@@ -306,7 +307,8 @@ function tick() {
       m.ideaIndex = pickIndex('idea', LINES.ideas.length);
     }
   }
-  if (m.remaining > 0) return render();
+  // Everything showing the time is redrawn when it changes: once a second, as the clock does.
+  if (m.remaining > 0) return Math.ceil(m.remaining) !== shown && render();
   stop();
   m.phase === 'focus' ? finishFocus() : finishRest();
 }
@@ -369,6 +371,8 @@ function finishRest() {
 addEventListener('focus', () => { if (m.phase === 'breakPending' && !celebrating) beginRest(); });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
+  frameDue = Infinity;  // a frame planned while out of sight may never have come
+  wake();
   tick();
   renderHarvest();
   if (m.phase === 'breakPending' && !celebrating) beginRest();
@@ -531,6 +535,30 @@ function eyesAt(from, to, k) {
   return to === 'awake' ? { open: true, lid: 0.08 + 0.92 * u } : { open: false, arc: b * u };
 }
 
+// ---------- frames ----------
+
+// Frames cost power, so the page is only drawn as often as something on it moves: every frame
+// while a tomato springs, blinks or glances; 30 times a second while things only drift (a rippling
+// surface, a breath, the break's lights); 15 for the room's own lights, which are on screen all day;
+// and not at all once everything is still. `frame` near the end of the file draws one.
+const DRIFT = 1 / 30, CALM = 1 / 15;
+let frameReq = 0, frameTimer = 0, frameDue = Infinity;
+
+/** Something changed: draw a frame as soon as the screen can show it. */
+function wake() { planFrame(0); }
+
+/** Asks for a frame `wait` seconds from now, unless one is already coming sooner. */
+function planFrame(wait) {
+  const due = performance.now() + wait * 1000;
+  if (due >= frameDue) return;
+  frameDue = due;
+  cancelAnimationFrame(frameReq);
+  clearTimeout(frameTimer);
+  // A short wait is the screen's next refresh; a longer one sleeps, then takes the refresh after it.
+  if (wait <= 1 / 60) frameReq = requestAnimationFrame(frame);
+  else frameTimer = setTimeout(() => { frameReq = requestAnimationFrame(frame); }, wait * 1000);
+}
+
 let tomatoId = 0;
 const liveTomatoes = new Set();
 
@@ -600,14 +628,21 @@ class Tomato {
     this.blinkAt = 0;
     this.last = null;
     this.fresh = true;
+    // How often it needs drawing ('lively', 'drift' or 'still'), and what its last frame showed.
+    this.pace = 'lively';
+    this.turning = false;
+    this.eyesOpen = true;
     if (animated) liveTomatoes.add(this);
   }
 
   set(progress, mood, bob = false) {
+    const changed = progress !== this.progress || mood !== this.mood || bob !== this.bob;
     this.progress = progress;
     this.mood = mood;
     this.bob = bob;
     if (!this.animated || reduced.matches) this.still();
+    // A drifting tomato sees the change in its next frame; any other gets one now.
+    else if (changed && this.pace !== 'drift') wake();
     return this;
   }
 
@@ -635,30 +670,65 @@ class Tomato {
     s.tiltV += -Math.max(-1, Math.min(1, side || (Math.random() - 0.5))) * 2.6;
     s.jellyV += 3.4;
     this.ripple = Math.max(this.ripple, 1.2);
+    wake();
   }
 
   /** A little jump for joy: it crouches first, then leaves the ground. */
   hop(height = 0.12) {
     this.s.jellyV += 2.2;
     this.leap = { in: 0.09, v: Math.sqrt(2 * GRAVITY * height) };
+    wake();
   }
 
   /** Falls in from `height` tomato-heights above and lands with a squash and a slosh. */
   drop(height = 0.3) {
     this.air = height;
     this.airV = 0;
+    wake();
   }
 
   /** Whatever it's sitting on moved: `dv` is the change in sideways speed, in pixels per second. */
-  push(dv) { this.s.tiltV += dv * 0.0011; }
+  push(dv) {
+    if (!dv) return;
+    this.s.tiltV += dv * 0.0011;
+    wake();
+  }
 
   /** Where to look, as a direction no longer than 1. */
-  lookAt(x, y) { this.gaze = [x, y]; }
+  lookAt(x, y) {
+    if (x === this.gaze[0] && y === this.gaze[1]) return;
+    this.gaze = [x, y];
+    wake();
+  }
+
+  /** Seconds until it needs drawing again: straight away while it springs, blinks or changes its
+   *  face, a moment while it only drifts, and at its next blink while it's still. */
+  due(t) {
+    const s = this.s, target = juiceLevel(this.progress);
+    // Near enough its goal, and slow enough, that no one could see it move.
+    const rests = (key, goal, e) => Math.abs(s[key] - goal) < e && Math.abs(s[key + 'V']) < e * 10;
+    const springing = !rests('tilt', 0, 0.002) || !rests('jelly', 0, 0.002)
+      || !rests('lookX', this.gaze[0], 0.01) || !rests('lookY', this.gaze[1], 0.01)
+      || !rests('level', target, 0.01) || this.air > 0 || this.airV !== 0 || this.leap || this.ripple > 0.02;
+    if (springing || this.turning || (this.eyesOpen && this.blinkAt - t < 0.1)) {
+      this.pace = 'lively';
+      return 0;
+    }
+    // The surface ripples while there's any juice and room above it; the body breathes while it
+    // grows, and a sleepy tomato breathes out z's.
+    const drifting = !rests('level', target, 0.001) || (s.level > 0.001 && s.level < 0.999)
+      || this.bobbing > 0.001 || this.sleepiness > 0.01;
+    this.pace = drifting ? 'drift' : 'still';
+    if (drifting) return DRIFT;
+    return this.eyesOpen ? Math.max(0, this.blinkAt - 0.1 - t) : Infinity;
+  }
 
   frame(t) {
     const s = this.s, target = juiceLevel(this.progress);
     if (this.fresh) { s.level = target; this.fresh = false; }
-    const dt = this.last == null ? 0 : Math.min(0.05, Math.max(0, t - this.last));
+    // After a pause the first frame moves nothing, so nothing lurches to catch up with the time away.
+    const gap = this.last == null ? 0 : t - this.last;
+    const dt = gap > 0.25 ? 0 : Math.min(0.05, Math.max(0, gap));
     this.last = t;
 
     if (this.leap && (this.leap.in -= dt) <= 0) {
@@ -715,6 +785,8 @@ class Tomato {
     const k = f.at < 0 || !this.animated ? 1 : Math.min(1, (t - f.at) / 0.32);
     if (k >= 1) f.from = f.to;
     const eyes = eyesAt(f.from, f.to, k);
+    this.turning = k < 1;
+    this.eyesOpen = eyes.open;
 
     // Every few seconds an awake tomato blinks, now and then twice.
     let lid = eyes.lid ?? 1;
@@ -1047,10 +1119,10 @@ let roomResting = false;
 function setRoom(resting) {
   if (resting === roomResting) return;
   roomResting = resting;
-  if (reduced.matches || !phone.matches) { document.body.classList.toggle('resting', resting); return; }
+  if (reduced.matches || !phone.matches) { document.body.classList.toggle('resting', resting); return wake(); }
   tint.style.background = resting ? 'linear-gradient(135deg, var(--mint), var(--peach))' : 'linear-gradient(var(--cream), var(--blush))';
   tint.style.display = '';
-  bloom(tint, true, { duration: 900, then: () => { document.body.classList.toggle('resting', roomResting); tint.style.display = 'none'; } });
+  bloom(tint, true, { duration: 900, then: () => { document.body.classList.toggle('resting', roomResting); tint.style.display = 'none'; wake(); } });
 }
 
 function renderPhone() {
@@ -1571,9 +1643,16 @@ function holdStart(e) {
     holdTimer = setTimeout(() => { holdEnd(); reset(); }, 180);
   }, 4000);
 }
+let drainTimer = 0;
 function holdEnd() {
   clearTimeout(holdTimer);
   holdTicks.forEach(clearTimeout);
+  // The juice keeps surfing while it drains away, then rests out of sight.
+  if (el.skip.classList.contains('holding')) {
+    el.skip.classList.add('draining');
+    clearTimeout(drainTimer);
+    drainTimer = setTimeout(() => el.skip.classList.remove('draining'), 650);
+  }
   el.skip.classList.remove('holding', 'done');
   skipSay('Hold to skip break');
 }
@@ -1590,6 +1669,8 @@ function sizeBokeh() {
     c.width = innerWidth * r;
     c.height = innerHeight * r;
   }
+  bokehAt = -Infinity;  // resizing clears them, so draw them again now
+  wake();
 }
 addEventListener('resize', sizeBokeh);
 
@@ -1627,9 +1708,9 @@ function drawBreath(t) {
 // The big tomato glances toward the pointer, and its juice sloshes when the window is dragged around.
 let pointer = null, lastLook = '', win = null;
 if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
-  addEventListener('pointermove', e => { pointer = [e.clientX, e.clientY]; }, { passive: true });
-  document.documentElement.addEventListener('pointerleave', () => { pointer = null; });
-  addEventListener('blur', () => { pointer = null; });
+  addEventListener('pointermove', e => { pointer = [e.clientX, e.clientY]; wake(); }, { passive: true });
+  document.documentElement.addEventListener('pointerleave', () => { pointer = null; wake(); });
+  addEventListener('blur', () => { pointer = null; wake(); });
 }
 function feel(t) {
   const key = pointer ? pointer.join() : '';
@@ -1650,32 +1731,42 @@ function feel(t) {
   } else win = { x, t, v: 0 };
 }
 
-let aloft = 0;
+let aloft = 0, bokehAt = -Infinity, bokehScene = '';
+/** Draws whatever is due, then plans the next frame for whatever needs it soonest. */
 function frame(now) {
+  frameDue = Infinity;
   const t = reduced.matches ? 0 : (performance.timeOrigin + now) / 1000;
+  let next = Infinity;  // seconds until something needs drawing again
   if (!reduced.matches) {
     feel(t);
-    for (const tm of liveTomatoes) if (tm.visible) tm.frame(t);
+    for (const tm of liveTomatoes) if (tm.visible) { tm.frame(t); next = Math.min(next, tm.due(t)); }
     // The shadow under the big tomato shrinks while it's in the air.
     const air = Math.min(1, bigTomato.air * 4);
     if (air || aloft) el.tomato.style.setProperty('--air', air.toFixed(3));
     aloft = air;
   }
-  if (!el.brk.hidden) {
-    const breath = drawBreath(t);
-    drawBokeh(el.bokeh, t, BOKEH_COLORS, 0.1, breath);
-  } else {
-    const resting = document.body.classList.contains('resting');
-    const breath = resting ? drawBreath(t) : 0.5;
-    drawBokeh(el.ambient, t, resting ? BOKEH_COLORS : AMBIENT_COLORS, 0.09, breath);
+  // The lights drift slowly. A break's are drawn at the drift rate, the room's more calmly still.
+  // While a tomato is drawn at least as often, they ride along on its frames instead of asking
+  // for frames of their own in between: drawn a touch early or late, nobody could tell.
+  const onBreak = !el.brk.hidden, resting = document.body.classList.contains('resting');
+  const scene = onBreak ? 'break' : resting ? 'resting' : 'room', every = scene === 'room' ? CALM : DRIFT;
+  const riding = next <= every;
+  if (scene !== bokehScene || bokehAt + every - t <= (riding ? next / 2 : 0.004)) {
+    bokehScene = scene;
+    bokehAt = t;
+    if (onBreak) drawBokeh(el.bokeh, t, BOKEH_COLORS, 0.1, drawBreath(t));
+    else drawBokeh(el.ambient, t, resting ? BOKEH_COLORS : AMBIENT_COLORS, 0.09, resting ? drawBreath(t) : 0.5);
   }
-  requestAnimationFrame(frame);
+  // With Reduce Motion everything stands still, so one frame is enough.
+  if (!reduced.matches) planFrame(riding ? next : Math.max(0, Math.min(next, bokehAt + every - t)));
 }
 
 // Reduce Motion can be switched on and off while the app is open.
 reduced.addEventListener?.('change', () => {
   for (const tm of liveTomatoes) tm.set(tm.progress, tm.mood, tm.bob);
   render();
+  bokehAt = -Infinity;
+  wake();
 });
 
 /**
@@ -1683,13 +1774,19 @@ reduced.addEventListener?.('change', () => {
  * once a minute, which would freeze the mini timer while you work in another app.
  */
 function startClock() {
+  // Each beat also checks whether the window has been moved: its juice sloshes as it goes, and a
+  // page with nothing moving on it draws no frames to notice with.
+  const beat = () => {
+    tick();
+    if (!reduced.matches && screenX !== win?.x) wake();
+  };
   try {
     const src = 'setInterval(() => postMessage(0), 250)';
-    new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' }))).onmessage = tick;
+    new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' }))).onmessage = beat;
   } catch {
-    setInterval(tick, 250);
+    setInterval(beat, 250);
   }
-  requestAnimationFrame(frame);
+  wake();
 }
 
 // ---------- start up ----------
